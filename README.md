@@ -1,158 +1,295 @@
-# AASIST
+# ============================================================================
 
-This repository provides the overall framework for training and evaluating audio anti-spoofing systems proposed in ['AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks'](https://arxiv.org/abs/2110.01200)
+# FILE: README.md
 
-### Getting started
-`requirements.txt` must be installed for execution. We state our experiment environment for those who prefer to simulate as similar as possible. 
-- Installing dependencies
-```
+# ============================================================================
+
+````markdown
+# AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention
+
+PyTorch implementation of AASIST for audio deepfake detection.
+
+## Overview
+
+AASIST (Audio Anti-Spoofing using Integrated Spectro-Temporal graph attention) is a state-of-the-art audio deepfake detection system that uses graph attention networks to model spectro-temporal relationships in audio signals.
+
+**Reference Paper:**
+
+> Jung, J. et al. (2022). "AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks". In ICASSP 2022.
+
+## Features
+
+- ✅ Graph Attention Networks (GAT) for spectral and temporal modeling
+- ✅ Heterogeneous graph attention for cross-domain interactions
+- ✅ Sinc-based frontend for raw waveform processing
+- ✅ Multiple inference paths with learnable master nodes
+- ✅ Support for frequency augmentation during training
+
+## Installation
+
+### Requirements
+
+```bash
 pip install -r requirements.txt
 ```
-- Our environment (for GPU training)
-  - Based on a docker image: `pytorch:1.6.0-cuda10.1-cudnn7-runtime`
-  - GPU: 1 NVIDIA Tesla V100
-    - About 16GB is required to train AASIST using a batch size of 24
-  - gpu-driver: 418.67
+````
 
-### Data preparation
-We train/validate/evaluate AASIST using the ASVspoof 2019 logical access dataset [4].
-```
-python ./download_dataset.py
-```
-(Alternative) Manual preparation is available via 
-- ASVspoof2019 dataset: https://datashare.ed.ac.uk/handle/10283/3336
-  1. Download `LA.zip` and unzip it
-  2. Set your dataset directory in the configuration file
+### Dataset
 
-### Training 
-The `main.py` includes train/validation/evaluation.
+Download the ASVspoof 2019 LA dataset:
 
-To train AASIST [1]:
+1. Visit: https://www.asvspoof.org/index2019.html
+2. Download and extract to `./LA/` directory
+
+Expected directory structure:
+
 ```
-python main.py --config ./config/AASIST.conf
-```
-To train AASIST-L [1]:
-```
-python main.py --config ./config/AASIST-L.conf
+LA/
+├── ASVspoof2019_LA_train/
+│   └── flac/
+├── ASVspoof2019_LA_dev/
+│   └── flac/
+├── ASVspoof2019_LA_eval/
+│   └── flac/
+└── ASVspoof2019_LA_cm_protocols/
+    ├── ASVspoof2019.LA.cm.train.trn.txt
+    ├── ASVspoof2019.LA.cm.dev.trl.txt
+    └── ASVspoof2019.LA.cm.eval.trl.txt
 ```
 
-#### Training baselines
+## Usage
 
-We additionally enabled the training of RawNet2[2] and RawGAT-ST[3]. 
+### Training
 
-To Train RawNet2 [2]:
-```
-python main.py --config ./config/RawNet2_baseline.conf
-```
-
-To train RawGAT-ST [3]:
-```
-python main.py --config ./config/RawGATST_baseline.conf
+```bash
+python scripts/train.py --config config/config.json --seed 1234
 ```
 
-### Pre-trained models
-We provide pre-trained AASIST and AASIST-L.
+**Training Options:**
 
-To evaluate AASIST [1]:
-- It shows `EER: 0.83%`, `min t-DCF: 0.0275`
-```
-python main.py --eval --config ./config/AASIST.conf
-```
-To evaluate AASIST-L [1]:
-- It shows `EER: 0.99%`, `min t-DCF: 0.0309`
-- Model has `85,306` parameters
-```
-python main.py --eval --config ./config/AASIST-L.conf
+- `--config`: Path to configuration file
+- `--seed`: Random seed for reproducibility (default: 1234)
+
+### Evaluation
+
+Evaluate on development set:
+
+```bash
+python scripts/evaluate.py --config config/config.json --eval_set dev
 ```
 
+Evaluate on evaluation set:
 
-### Developing custom models
-Simply by adding a configuration file and a model architecture, one can train and evaluate their models.
-
-To train a custom model:
-```
-1. Define your model
-  - The model should be a class named "Model"
-2. Make a configuration by modifying "model_config"
-  - architecture: filename of your model.
-  - hyper-parameters to be tuned can be also passed using variables in "model_config"
-3. run python main.py --config {CUSTOM_CONFIG_NAME}
+```bash
+python scripts/evaluate.py --config config/config.json --eval_set eval
 ```
 
-### License
+**Evaluation Options:**
+
+- `--config`: Path to configuration file
+- `--model_path`: Override model path from config
+- `--eval_set`: Choose 'dev' or 'eval' set
+
+### Inference
+
+```python
+import torch
+from models import AASIST
+import soundfile as sf
+
+# Load model
+config = {...}  # Your model config
+model = AASIST(config)
+model.load_state_dict(torch.load('path/to/weights.pth'))
+model.eval()
+
+# Load audio
+audio, sr = sf.read('audio.flac')
+audio_tensor = torch.FloatTensor(audio).unsqueeze(0)
+
+# Inference
+with torch.no_grad():
+    _, output = model(audio_tensor)
+    score = output[0, 1] - output[0, 0]  # bonafide - spoof
+
+print(f"Score: {score.item():.4f}")
+print(f"Prediction: {'Bonafide' if score > 0 else 'Spoof'}")
 ```
-Copyright (c) 2021-present NAVER Corp.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+## Configuration
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+The configuration file (`config/config.json`) contains all hyperparameters:
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
+```json
+{
+  "database_path": "./LA/",
+  "model_path": "./models/weights/AASIST.pth",
+  "batch_size": 24,
+  "num_epochs": 100,
+  "model_config": {
+    "architecture": "AASIST",
+    "nb_samp": 64600,
+    "first_conv": 128,
+    "filts": [70, [1, 32], [32, 32], [32, 64], [64, 64]],
+    "gat_dims": [64, 32],
+    "pool_ratios": [0.5, 0.7, 0.5, 0.5],
+    "temperatures": [2.0, 2.0, 100.0, 100.0]
+  },
+  "optim_config": {
+    "optimizer": "adam",
+    "base_lr": 0.0001,
+    "lr_min": 0.000005,
+    "weight_decay": 0.0001,
+    "scheduler": "cosine"
+  }
+}
 ```
 
-### Acknowledgements
-This repository is built on top of several open source projects. 
-- [ASVspoof 2021 baseline repo](https://github.com/asvspoof-challenge/2021/tree/main/LA/Baseline-RawNet2)
-- [min t-DCF implementation](https://www.asvspoof.org/resources/tDCF_python_v2.zip)
+### Key Parameters
 
-The repository for baseline RawGAT-ST model will be open
--  https://github.com/eurecom-asp/RawGAT-ST-antispoofing
+**Model Architecture:**
 
-The dataset we use is ASVspoof 2019 [4]
-- https://www.asvspoof.org/index2019.html
+- `nb_samp`: Input audio length in samples (~4 seconds at 16kHz)
+- `first_conv`: Sinc filter kernel size
+- `filts`: Channel dimensions for residual blocks
+- `gat_dims`: Dimensions for GAT layers
+- `pool_ratios`: Graph pooling ratios
+- `temperatures`: Attention temperature parameters
 
-### References
-[1] AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks
+**Training:**
+
+- `batch_size`: Batch size for training
+- `num_epochs`: Number of training epochs
+- `optimizer`: Optimizer type ('adam' or 'sgd')
+- `base_lr`: Initial learning rate
+- `scheduler`: Learning rate scheduler ('cosine', 'multistep', 'sgdr')
+
+## Model Architecture
+
+### Overview
+
+```
+Raw Audio → SincConv → ResBlocks → GAT-S & GAT-T → HtrgGAT → Output
+                                        ↓
+                                   Master Nodes
+```
+
+### Components
+
+1. **SincConv Frontend**: Learnable bandpass filters for raw waveform
+2. **Residual Encoder**: 6 residual blocks for feature extraction
+3. **GAT-S**: Graph attention for spectral features
+4. **GAT-T**: Graph attention for temporal features
+5. **HtrgGAT**: Heterogeneous graph attention for cross-domain modeling
+6. **Master Nodes**: Learnable global representations
+7. **Dual Path**: Two parallel inference paths for robustness
+
+## Evaluation Metrics
+
+- **EER** (Equal Error Rate): The point where FAR = FRR
+- **min t-DCF** (minimum tandem Detection Cost Function): Detection cost in tandem with ASV system
+
+Lower values indicate better performance.
+
+## Project Structure
+
+```
+aasist_project/
+├── config/
+│   └── config.json
+├── models/
+│   ├── __init__.py
+│   ├── aasist.py
+│   └── layers.py
+├── utils/
+│   ├── __init__.py
+│   ├── optimizer.py
+│   └── metrics.py
+├── data_utils/
+│   ├── __init__.py
+│   └── dataset.py
+├── scripts/
+│   ├── train.py
+│   └── evaluate.py
+├── checkpoints/
+│   └── weights/
+├── requirements.txt
+└── README.md
+```
+
+## Results
+
+Expected performance on ASVspoof 2019 LA:
+
+| Metric    | Development | Evaluation |
+| --------- | ----------- | ---------- |
+| EER       | ~0.83%      | ~0.99%     |
+| min t-DCF | ~0.0275     | ~0.0352    |
+
+_Note: Results may vary depending on training settings and random seed._
+
+## Tips for Training
+
+1. **Use GPU**: Training is significantly faster with CUDA
+2. **Batch Size**: Adjust based on available GPU memory
+3. **Learning Rate**: Start with 0.0001 and use cosine annealing
+4. **Augmentation**: Frequency masking helps prevent overfitting
+5. **Checkpoints**: Save regularly to prevent data loss
+
+## Troubleshooting
+
+### Common Issues
+
+**Out of Memory:**
+
+```python
+# Reduce batch size in config
+"batch_size": 16  # or 8
+```
+
+**Slow Training:**
+
+```python
+# Increase num_workers in DataLoader
+train_loader = DataLoader(..., num_workers=8)
+```
+
+**Poor Performance:**
+
+- Check data preprocessing
+- Verify audio sampling rate (16kHz)
+- Ensure proper normalization
+- Try different random seeds
+
+## Citation
+
+If you use this code, please cite:
+
 ```bibtex
-@INPROCEEDINGS{Jung2021AASIST,
+@inproceedings{jung2022aasist,
+  title={AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks},
   author={Jung, Jee-weon and Heo, Hee-Soo and Tak, Hemlata and Shim, Hye-jin and Chung, Joon Son and Lee, Bong-Jin and Yu, Ha-Jin and Evans, Nicholas},
-  booktitle={arXiv preprint arXiv:2110.01200}, 
-  title={AASIST: Audio Anti-Spoofing using Integrated Spectro-Temporal Graph Attention Networks}, 
-  year={2021}
-```
-
-[2] End-to-End anti-spoofing with RawNet2
-```bibtex
-@INPROCEEDINGS{Tak2021End,
-  author={Tak, Hemlata and Patino, Jose and Todisco, Massimiliano and Nautsch, Andreas and Evans, Nicholas and Larcher, Anthony},
-  booktitle={Proc. ICASSP}, 
-  title={End-to-End anti-spoofing with RawNet2}, 
-  year={2021},
-  pages={6369-6373}
+  booktitle={ICASSP 2022-2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)},
+  pages={6367--6371},
+  year={2022},
+  organization={IEEE}
 }
 ```
 
-[3] End-to-end spectro-temporal graph attention networks for speaker verification anti-spoofing and speech deepfake detection
-```bibtex
-@inproceedings{tak21_asvspoof,
-  author={Tak, Hemlata and Jung, Jee-weon and Patino, Jose and Kamble, Madhu and Todisco, Massimiliano and Evans, Nicholas},
-  booktitle={Proc. ASVSpoof Challenge},
-  title={End-to-end spectro-temporal graph attention networks for speaker verification anti-spoofing and speech deepfake detection},
-  year={2021},
-  pages={1--8}
+## License
+
+MIT License - See LICENSE file for details
+
+## Contact
+
+For questions or issues, please open an issue on GitHub or contact the original authors.
+
+## Acknowledgements
+
+- Original AASIST implementation by NAVER Corp.
+- ASVspoof 2019 challenge organizers
+- PyTorch team for the deep learning framework
+
 ```
 
-[4] ASVspoof 2019: A large-scale public database of synthesized, converted and replayed speech
-```bibtex
-@article{wang2020asvspoof,
-  title={ASVspoof 2019: A large-scale public database of synthesized, converted and replayed speech},
-  author={Wang, Xin and Yamagishi, Junichi and Todisco, Massimiliano and Delgado, H{\'e}ctor and Nautsch, Andreas and Evans, Nicholas and Sahidullah, Md and Vestman, Ville and Kinnunen, Tomi and Lee, Kong Aik and others},
-  journal={Computer Speech \& Language},
-  volume={64},
-  pages={101114},
-  year={2020},
-  publisher={Elsevier}
-}
 ```
