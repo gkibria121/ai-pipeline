@@ -129,7 +129,7 @@ def main(args: argparse.Namespace) -> None:
 
     # Training
     for epoch in range(config["num_epochs"]):
-        print("Start training epoch{:03d}".format(epoch))
+        print(f"Start training epoch {epoch}/{config['num_epochs'] - 1}")
         running_loss = train_epoch(trn_loader, model, optimizer, device,
                                    scheduler, config)
         produce_evaluation_file(dev_loader, model, device,
