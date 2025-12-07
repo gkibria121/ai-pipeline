@@ -2,6 +2,9 @@ import sys
 import os
 
 import numpy as np
+from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
+                             f1_score, confusion_matrix, roc_auc_score, 
+                             roc_curve, auc)
 
 
 def calculate_tDCF_EER(cm_scores_file,
@@ -58,17 +61,17 @@ def calculate_tDCF_EER(cm_scores_file,
     eer_cm = compute_eer(bona_cm, spoof_cm)[0]
 
     attack_types = [f'A{_id:02d}' for _id in range(7, 20)]
-    if printout:
-        spoof_cm_breakdown = {
-            attack_type: cm_scores[cm_sources == attack_type]
-            for attack_type in attack_types
-        }
+    
+    spoof_cm_breakdown = {
+        attack_type: cm_scores[cm_sources == attack_type]
+        for attack_type in attack_types
+    }
 
-        eer_cm_breakdown = {
-            attack_type: compute_eer(bona_cm,
-                                     spoof_cm_breakdown[attack_type])[0]
-            for attack_type in attack_types
-        }
+    eer_cm_breakdown = {
+        attack_type: compute_eer(bona_cm,
+                                 spoof_cm_breakdown[attack_type])[0]
+        for attack_type in attack_types
+    }
 
     [Pfa_asv, Pmiss_asv,
      Pmiss_spoof_asv] = obtain_asv_error_rates(tar_asv, non_asv, spoof_asv,
@@ -87,22 +90,74 @@ def calculate_tDCF_EER(cm_scores_file,
     min_tDCF_index = np.argmin(tDCF_curve)
     min_tDCF = tDCF_curve[min_tDCF_index]
 
+    # Calculate binary classification metrics
+    # Create binary labels: 1 for bonafide, 0 for spoof
+    y_true = np.concatenate([np.ones(len(bona_cm)), np.zeros(len(spoof_cm))])
+    y_scores = np.concatenate([bona_cm, spoof_cm])
+    
+    # Use EER threshold for binary predictions
+    eer_threshold = CM_thresholds[min_tDCF_index]
+    y_pred = (y_scores >= eer_threshold).astype(int)
+    
+    # Calculate metrics
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    
+    # Confusion matrix
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    
+    # ROC-AUC
+    roc_auc = roc_auc_score(y_true, y_scores)
+
     if printout:
         with open(output_file, "w") as f_res:
-            f_res.write('\nCM SYSTEM\n')
+            f_res.write('\n' + '='*60 + '\n')
+            f_res.write('CM SYSTEM PERFORMANCE\n')
+            f_res.write('='*60 + '\n')
             f_res.write('\tEER\t\t= {:8.9f} % '
                         '(Equal error rate for countermeasure)\n'.format(
                             eer_cm * 100))
 
-            f_res.write('\nTANDEM\n')
+            f_res.write('\nBINARY CLASSIFICATION METRICS\n')
+            f_res.write('-'*60 + '\n')
+            f_res.write('\tAccuracy\t= {:.4f}\n'.format(accuracy))
+            f_res.write('\tPrecision\t= {:.4f}\n'.format(precision))
+            f_res.write('\tRecall (Sensitivity)\t= {:.4f}\n'.format(recall))
+            f_res.write('\tSpecificity\t= {:.4f}\n'.format(specificity))
+            f_res.write('\tF1-Score\t= {:.4f}\n'.format(f1))
+            f_res.write('\tROC-AUC\t\t= {:.4f}\n'.format(roc_auc))
+            
+            f_res.write('\nCONFUSION MATRIX\n')
+            f_res.write('-'*60 + '\n')
+            f_res.write('\t\t\tPredicted Bonafide\tPredicted Spoof\n')
+            f_res.write('\tActual Bonafide\t\t{:d}\t\t\t{:d}\n'.format(tp, fn))
+            f_res.write('\tActual Spoof\t\t{:d}\t\t\t{:d}\n'.format(fp, tn))
+            
+            f_res.write('\nDETAILED METRICS\n')
+            f_res.write('-'*60 + '\n')
+            f_res.write('\tTrue Positives (TP)\t= {:d}\n'.format(tp))
+            f_res.write('\tTrue Negatives (TN)\t= {:d}\n'.format(tn))
+            f_res.write('\tFalse Positives (FP)\t= {:d}\n'.format(fp))
+            f_res.write('\tFalse Negatives (FN)\t= {:d}\n'.format(fn))
+            
+            f_res.write('\nTANDEM DETECTION COST FUNCTION\n')
+            f_res.write('-'*60 + '\n')
             f_res.write('\tmin-tDCF\t\t= {:8.9f}\n'.format(min_tDCF))
+            f_res.write('\tEER Threshold\t\t= {:.6f}\n'.format(eer_threshold))
 
-            f_res.write('\nBREAKDOWN CM SYSTEM\n')
+            f_res.write('\nBREAKDOWN BY ATTACK TYPE\n')
+            f_res.write('-'*60 + '\n')
             for attack_type in attack_types:
                 _eer = eer_cm_breakdown[attack_type] * 100
                 f_res.write(
-                    f'\tEER {attack_type}\t\t= {_eer:8.9f} % (Equal error rate for {attack_type}\n'
+                    f'\tEER {attack_type}\t\t= {_eer:8.9f} %\n'
                 )
+            f_res.write('='*60 + '\n')
+        
         os.system(f"cat {output_file}")
 
     return eer_cm * 100, min_tDCF
