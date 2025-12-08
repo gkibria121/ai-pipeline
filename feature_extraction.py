@@ -8,59 +8,84 @@ import librosa
 
 import torch
 from torch.utils.data import Dataset
+
 class FeatureExtractor:
     """Feature extraction module for different audio representations"""
     
-    def __init__(self, sample_rate=16000, n_fft=512, n_mels=128, n_mfcc=13, n_lfcc=13):
+    def __init__(self, sample_rate=16000, n_fft=512, n_mels=128, n_mfcc=13, n_lfcc=13, nb_samp=64600, target_frames=None):
         self.sr = sample_rate
         self.n_fft = n_fft
         self.n_mels = n_mels
         self.n_mfcc = n_mfcc
         self.n_lfcc = n_lfcc
-    
+
+        # derive target_frames from nb_samp and hop_length if not provided
+        hop = self.n_fft // 4
+        default_frames = int(np.ceil(nb_samp / hop))
+        self.target_frames = int(target_frames) if target_frames is not None else default_frames
+
+    def _pad_truncate_time(self, spec: np.ndarray):
+        """
+        Ensure spectrogram-like arrays have shape (freq_bins, target_frames).
+        If shorter -> zero-pad on the right. If longer -> center-crop.
+        """
+        if spec.ndim != 2:
+            raise ValueError("spec must be 2D (freq, time)")
+        f, t = spec.shape
+        if t == self.target_frames:
+            return spec
+        if t < self.target_frames:
+            pad_width = self.target_frames - t
+            return np.pad(spec, ((0, 0), (0, pad_width)), mode="constant", constant_values=(spec.min(),))
+        # t > target_frames -> center crop
+        start = max(0, (t - self.target_frames) // 2)
+        return spec[:, start:start + self.target_frames]
+
     def extract_raw_audio(self, audio):
         """Feature 0: Raw audio (no processing)"""
-        # Ensure fixed length of 64600 samples
-        if len(audio) < 64600:
-            audio = np.pad(audio, (0, 64600 - len(audio)), mode='constant')
-        elif len(audio) > 64600:
-            audio = audio[:64600]
+        # Ensure fixed length of nb_samp (64600 default)
+        nb_samp = self.target_frames * (self.n_fft // 4)  # approx inverse mapping
+        if len(audio) < nb_samp:
+            audio = np.pad(audio, (0, nb_samp - len(audio)), mode='constant')
+        elif len(audio) > nb_samp:
+            audio = audio[:nb_samp]
         return audio.astype(np.float32)
     
     def extract_mel_spectrogram(self, audio):
-        """Feature 1: Mel Spectrogram"""
+        """Feature 1: Mel Spectrogram (padded/truncated to fixed frames)"""
         mel_spec = librosa.feature.melspectrogram(
             y=audio, sr=self.sr, n_fft=self.n_fft, 
             hop_length=self.n_fft//4, n_mels=self.n_mels)
         log_mel = librosa.power_to_db(mel_spec, ref=np.max)
+        log_mel = self._pad_truncate_time(log_mel)
         return log_mel.astype(np.float32)
     
     def extract_mfcc(self, audio):
-        """Feature 2: MFCC (Mel-Frequency Cepstral Coefficients)"""
+        """Feature 2: MFCC (padded/truncated to fixed frames)"""
         mfcc = librosa.feature.mfcc(
             y=audio, sr=self.sr, n_fft=self.n_fft,
             hop_length=self.n_fft//4, n_mfcc=self.n_mfcc, n_mels=self.n_mels)
+        mfcc = self._pad_truncate_time(mfcc)
         return mfcc.astype(np.float32)
     
     def extract_lfcc(self, audio):
-        """Feature 3: LFCC (Linear-Frequency Cepstral Coefficients)"""
-        # Compute power spectrogram with linear scale
+        """Feature 3: LFCC (padded/truncated to fixed frames)"""
         spec = np.abs(librosa.stft(
             audio, n_fft=self.n_fft, 
             hop_length=self.n_fft//4)) ** 2
-        
-        # Apply log and DCT for cepstral coefficients
         log_spec = librosa.power_to_db(spec)
         lfcc = librosa.feature.mfcc(
             S=log_spec, n_mfcc=self.n_lfcc)
+        lfcc = self._pad_truncate_time(lfcc)
         return lfcc.astype(np.float32)
     
     def extract_cqt(self, audio):
-        """Feature 4: CQT (Constant-Q Transform)"""
+        """Feature 4: CQT (padded/truncated to fixed frames)"""
         cqt = np.abs(librosa.cqt(
             audio, sr=self.sr, 
             hop_length=self.n_fft//4, n_bins=84, bins_per_octave=12))
-        log_cqt = librosa.power_to_db(cqt, ref=np.max)
+        log_cqt = librosa.amplitude_to_db(cqt, ref=np.max)
+        log_cqt = self._pad_truncate_time(log_cqt)
         return log_cqt.astype(np.float32)
     
     def extract_feature(self, audio, feature_type=0):
