@@ -81,10 +81,7 @@ class Dataset_ASVspoof2019_train(Dataset):
             print(f"Error loading {filepath}: {e}")
             audio = np.zeros(64600)
         
-        # Extract feature
         feature = self.extractor.extract_feature(audio, self.feature_type)
-        
-        # Convert to tensor
         feature = torch.FloatTensor(feature)
         label = self.labels[utt_id]
         return feature, label
@@ -111,10 +108,6 @@ class Dataset_ASVspoof2019_devNeval(Dataset):
             print(f"Error loading {filepath}: {e}")
             audio = np.zeros(64600)
         
-        # Extract feature
         feature = self.extractor.extract_feature(audio, self.feature_type)
-        
-        # Convert to tensor
         feature = torch.FloatTensor(feature)
-        
         return feature, utt_id

@@ -5,7 +5,6 @@ Supports: Raw Audio, Mel Spectrogram, MFCC, LFCC, CQT
 
 import numpy as np
 import librosa
-import torch
 
 
 class FeatureExtractor:
