@@ -20,7 +20,12 @@ class FeatureExtractor:
     
     def extract_raw_audio(self, audio):
         """Feature 0: Raw audio (no processing)"""
-        return audio
+        # Ensure fixed length of 64600 samples
+        if len(audio) < 64600:
+            audio = np.pad(audio, (0, 64600 - len(audio)), mode='constant')
+        elif len(audio) > 64600:
+            audio = audio[:64600]
+        return audio.astype(np.float32)
     
     def extract_mel_spectrogram(self, audio):
         """Feature 1: Mel Spectrogram"""
@@ -39,14 +44,15 @@ class FeatureExtractor:
     
     def extract_lfcc(self, audio):
         """Feature 3: LFCC (Linear-Frequency Cepstral Coefficients)"""
-        # Compute power spectrogram
+        # Compute power spectrogram with linear scale
         spec = np.abs(librosa.stft(
             audio, n_fft=self.n_fft, 
             hop_length=self.n_fft//4)) ** 2
         
-        # Apply DCT-like transformation for cepstral coefficients
+        # Apply log and DCT for cepstral coefficients
+        log_spec = librosa.power_to_db(spec)
         lfcc = librosa.feature.mfcc(
-            S=librosa.power_to_db(spec), n_mfcc=self.n_lfcc)
+            S=log_spec, n_mfcc=self.n_lfcc)
         return lfcc.astype(np.float32)
     
     def extract_cqt(self, audio):
@@ -66,7 +72,7 @@ class FeatureExtractor:
             feature_type: 0=raw, 1=mel_spec, 2=mfcc, 3=lfcc, 4=cqt
         
         Returns:
-            extracted feature
+            extracted feature as numpy array
         """
         if feature_type == 0:
             return self.extract_raw_audio(audio)

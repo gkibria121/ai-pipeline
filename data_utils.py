@@ -1,8 +1,10 @@
+import librosa
 import numpy as np
 import soundfile as sf
 import torch
 from torch import Tensor
 from torch.utils.data import Dataset
+from feature_extraction import FeatureExtractor
 
 ___author__ = "Hemlata Tak, Jee-weon Jung"
 __email__ = "tak@eurecom.fr, jeeweon.jung@navercorp.com"
@@ -60,40 +62,68 @@ def pad_random(x: np.ndarray, max_len: int = 64600):
 
 
 class Dataset_ASVspoof2019_train(Dataset):
-    def __init__(self, list_IDs, labels, base_dir):
-        """self.list_IDs	: list of strings (each string: utt key),
-           self.labels      : dictionary (key: utt key, value: label integer)"""
+    def __init__(self, list_IDs, labels, base_dir, feature_type=0):
         self.list_IDs = list_IDs
         self.labels = labels
         self.base_dir = base_dir
-        self.cut = 64600  # take ~4 sec audio (64600 samples)
+        self.feature_type = feature_type
+        self.extractor = FeatureExtractor()
+        self.sample_rate = 16000
 
     def __len__(self):
         return len(self.list_IDs)
 
     def __getitem__(self, index):
-        key = self.list_IDs[index]
-        X, _ = sf.read(str(self.base_dir / f"flac/{key}.flac"))
-        X_pad = pad_random(X, self.cut)
-        x_inp = Tensor(X_pad)
-        y = self.labels[key]
-        return x_inp, y
+        utt_id = self.list_IDs[index]
+        filepath = self.base_dir / f"{utt_id}.flac"
+        
+        try:
+            audio, sr = librosa.load(filepath, sr=self.sample_rate)
+        except Exception as e:
+            print(f"Error loading {filepath}: {e}")
+            audio = np.zeros(64600)
+        
+        # Extract feature
+        feature = self.extractor.extract_feature(audio, self.feature_type)
+        
+        # Convert to tensor
+        if self.feature_type == 0:  # raw audio
+            feature = torch.FloatTensor(feature)
+        else:  # spectrogram features - flatten if needed
+            feature = torch.FloatTensor(feature)
+        
+        label = self.labels[utt_id]
+        return feature, label
 
 
 class Dataset_ASVspoof2019_devNeval(Dataset):
-    def __init__(self, list_IDs, base_dir):
-        """self.list_IDs	: list of strings (each string: utt key),
-        """
+    def __init__(self, list_IDs, base_dir, feature_type=0):
         self.list_IDs = list_IDs
         self.base_dir = base_dir
-        self.cut = 64600  # take ~4 sec audio (64600 samples)
+        self.feature_type = feature_type
+        self.extractor = FeatureExtractor()
+        self.sample_rate = 16000
 
     def __len__(self):
         return len(self.list_IDs)
 
     def __getitem__(self, index):
-        key = self.list_IDs[index]
-        X, _ = sf.read(str(self.base_dir / f"flac/{key}.flac"))
-        X_pad = pad(X, self.cut)
-        x_inp = Tensor(X_pad)
-        return x_inp, key
+        utt_id = self.list_IDs[index]
+        filepath = self.base_dir / f"{utt_id}.flac"
+        
+        try:
+            audio, sr = librosa.load(filepath, sr=self.sample_rate)
+        except Exception as e:
+            print(f"Error loading {filepath}: {e}")
+            audio = np.zeros(64600)
+        
+        # Extract feature
+        feature = self.extractor.extract_feature(audio, self.feature_type)
+        
+        # Convert to tensor
+        if self.feature_type == 0:  # raw audio
+            feature = torch.FloatTensor(feature)
+        else:  # spectrogram features
+            feature = torch.FloatTensor(feature)
+        
+        return feature, utt_id
