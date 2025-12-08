@@ -17,6 +17,7 @@ from shutil import copy
 from typing import Dict, List, Union
 
 import torch
+import torch.cuda.amp as amp
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -109,10 +110,14 @@ def main(args: argparse.Namespace) -> None:
     copy(args.config, model_tag / "config.conf")
 
     # set device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
     print("Device: {}".format(device))
     if device == "cpu":
         raise ValueError("GPU not detected!")
+
+    # enable cudnn benchmark to use fast convolution algorithms (optional)
+    if str(config.get("cudnn_benchmark_toggle", "True")).lower() in ("true", "1", "yes"):
+        torch.backends.cudnn.benchmark = True
 
     # define model architecture
     model = get_model(model_config, device)
@@ -364,44 +369,33 @@ def produce_evaluation_file(
     print("Scores saved to {}".format(save_path))
 
 
-def train_epoch(
-    trn_loader: DataLoader,
-    model,
-    optim: Union[torch.optim.SGD, torch.optim.Adam],
-    device: torch.device,
-    scheduler: torch.optim.lr_scheduler,
-    config: argparse.Namespace):
-    """Train the model for one epoch"""
-    running_loss = 0
-    num_total = 0.0
-    ii = 0
+def train_epoch(train_loader, model, optimizer, device, criterion, scaler=None, amp_enabled=False):
     model.train()
+    running_loss = 0.0
 
-    # set objective (Loss) functions
-    weight = torch.FloatTensor([0.1, 0.9]).to(device)
-    criterion = nn.CrossEntropyLoss(weight=weight)
-    for batch_x, batch_y in tqdm(trn_loader, desc="Training"):
-        batch_size = batch_x.size(0)
-        num_total += batch_size
-        ii += 1
-        batch_x = batch_x.to(device)
-        batch_y = batch_y.view(-1).type(torch.int64).to(device)
-        _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
-        batch_loss = criterion(batch_out, batch_y)
-        running_loss += batch_loss.item() * batch_size
-        optim.zero_grad()
-        batch_loss.backward()
-        optim.step()
+    for batch_x, batch_y in train_loader:
+        batch_x = batch_x.to(device, non_blocking=True)
+        batch_y = batch_y.to(device, non_blocking=True)
 
-        if config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
-            scheduler.step()
-        elif scheduler is None:
-            pass
+        optimizer.zero_grad()
+
+        if amp_enabled:
+            with amp.autocast():
+                _, outputs = model(batch_x, Freq_aug=True)
+                loss = criterion(outputs, batch_y)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
         else:
-            raise ValueError("scheduler error, got:{}".format(scheduler))
+            _, outputs = model(batch_x, Freq_aug=True)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
 
-    running_loss /= num_total
-    return running_loss
+        running_loss += loss.item() * batch_x.size(0)
+
+    epoch_loss = running_loss / (len(train_loader.dataset) if hasattr(train_loader, "dataset") else len(train_loader))
+    return epoch_loss
 
 
 def save_checkpoint(model, config, path):
