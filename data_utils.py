@@ -1,8 +1,6 @@
 import librosa
 import numpy as np
-import soundfile as sf
 import torch
-from torch import Tensor
 from torch.utils.data import Dataset
 from feature_extraction import FeatureExtractor
 
@@ -87,11 +85,7 @@ class Dataset_ASVspoof2019_train(Dataset):
         feature = self.extractor.extract_feature(audio, self.feature_type)
         
         # Convert to tensor
-        if self.feature_type == 0:  # raw audio
-            feature = torch.FloatTensor(feature)
-        else:  # spectrogram features - flatten if needed
-            feature = torch.FloatTensor(feature)
-        
+        feature = torch.FloatTensor(feature)
         label = self.labels[utt_id]
         return feature, label
 
@@ -121,9 +115,6 @@ class Dataset_ASVspoof2019_devNeval(Dataset):
         feature = self.extractor.extract_feature(audio, self.feature_type)
         
         # Convert to tensor
-        if self.feature_type == 0:  # raw audio
-            feature = torch.FloatTensor(feature)
-        else:  # spectrogram features
-            feature = torch.FloatTensor(feature)
+        feature = torch.FloatTensor(feature)
         
         return feature, utt_id
