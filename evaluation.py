@@ -5,12 +5,16 @@ import numpy as np
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
                              f1_score, confusion_matrix, roc_auc_score, 
                              roc_curve, auc)
+from visualization import (plot_roc_curve, plot_confusion_matrix, 
+                           plot_score_distribution, plot_metrics_comparison,
+                           plot_det_curve)
 
 
 def calculate_tDCF_EER(cm_scores_file,
                        asv_score_file,
                        output_file,
-                       printout=True):
+                       printout=True,
+                       output_dir=None):
     # Replace CM scores with your own scores or provide score file as the
     # first argument.
     # cm_scores_file =  'score_cm.txt'
@@ -112,6 +116,9 @@ def calculate_tDCF_EER(cm_scores_file,
     
     # ROC-AUC
     roc_auc = roc_auc_score(y_true, y_scores)
+    
+    # Compute DET curve
+    frr, far, det_thresholds = compute_det_curve(bona_cm, spoof_cm)
 
     if printout:
         with open(output_file, "w") as f_res:
@@ -159,6 +166,41 @@ def calculate_tDCF_EER(cm_scores_file,
             f_res.write('='*60 + '\n')
         
         os.system(f"cat {output_file}")
+        
+        # Generate plots if output directory is provided
+        if output_dir is not None:
+            os.makedirs(output_dir, exist_ok=True)
+            
+            print("\n" + "="*60)
+            print("Generating visualization plots...")
+            print("="*60)
+            
+            # Plot ROC curve
+            plot_roc_curve(y_true, y_scores, output_dir)
+            
+            # Plot confusion matrix
+            plot_confusion_matrix(y_true, y_pred, output_dir)
+            
+            # Plot score distribution
+            plot_score_distribution(bona_cm, spoof_cm, output_dir)
+            
+            # Plot metrics comparison
+            metrics_dict = {
+                'Accuracy': accuracy,
+                'Precision': precision,
+                'Recall': recall,
+                'Specificity': specificity,
+                'F1-Score': f1,
+                'ROC-AUC': roc_auc
+            }
+            plot_metrics_comparison(metrics_dict, output_dir)
+            
+            # Plot DET curve
+            plot_det_curve(frr, far, det_thresholds, output_dir)
+            
+            print("="*60)
+            print("All plots saved successfully!")
+            print("="*60 + "\n")
 
     return eer_cm * 100, min_tDCF
 

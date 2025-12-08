@@ -102,12 +102,14 @@ def main(args: argparse.Namespace) -> None:
         calculate_tDCF_EER(cm_scores_file=eval_score_path,
                            asv_score_file=database_path /
                            config["asv_score_path"],
-                           output_file=model_tag / "t-DCF_EER.txt")
+                           output_file=model_tag / "t-DCF_EER.txt",
+                           output_dir=model_tag / "plots")
         print("DONE.")
         eval_eer, eval_tdcf = calculate_tDCF_EER(
             cm_scores_file=eval_score_path,
             asv_score_file=database_path / config["asv_score_path"],
-            output_file=model_tag/"loaded_model_t-DCF_EER.txt")
+            output_file=model_tag/"loaded_model_t-DCF_EER.txt",
+            output_dir=model_tag / "plots")
         sys.exit(0)
 
     # get optimizer and scheduler
@@ -127,7 +129,7 @@ def main(args: argparse.Namespace) -> None:
     metric_path = model_tag / "metrics"
     os.makedirs(metric_path, exist_ok=True)
 
-    # Training
+    # Training loop
     for epoch in range(config["num_epochs"]):
         print(f"Start training epoch {epoch+1}/{config['num_epochs']  }")
         running_loss = train_epoch(trn_loader, model, optimizer, device,
@@ -181,6 +183,7 @@ def main(args: argparse.Namespace) -> None:
         writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
         writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
 
+    # Final evaluation with plots
     print("Start final evaluation")
     epoch += 1
     if n_swa_update > 0:
@@ -191,7 +194,8 @@ def main(args: argparse.Namespace) -> None:
     eval_eer, eval_tdcf = calculate_tDCF_EER(cm_scores_file=eval_score_path,
                                              asv_score_file=database_path /
                                              config["asv_score_path"],
-                                             output_file=model_tag / "t-DCF_EER.txt")
+                                             output_file=model_tag / "t-DCF_EER.txt",
+                                             output_dir=model_tag / "plots")
     f_log = open(model_tag / "metric_log.txt", "a")
     f_log.write("=" * 5 + "\n")
     f_log.write("EER: {:.3f}, min t-DCF: {:.5f}".format(eval_eer, eval_tdcf))
