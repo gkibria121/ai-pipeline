@@ -178,32 +178,38 @@ class SincConv(nn.Module):
         filbandwidthsf = 700 * (10**(filbandwidthsmel / 2595) - 1)
         
         self.register_buffer('mel_freqs', torch.FloatTensor(filbandwidthsf))
-        self.hsupp = torch.arange(-(self.kernel_size - 1) / 2, 
-                                  (self.kernel_size - 1) / 2 + 1)
+        # Register hsupp as a buffer so it moves to the correct device
+        self.register_buffer('hsupp', torch.arange(-(self.kernel_size - 1) / 2, 
+                                                   (self.kernel_size - 1) / 2 + 1,
+                                                   dtype=torch.float32))
         
     def forward(self, x, mask=False):
         band_pass_filter = torch.zeros(self.out_channels, self.kernel_size, 
-                                       device=x.device)
+                                       device=x.device, dtype=x.dtype)
         
-        for i in range(len(self.mel_freqs) - 1):
-            fmin = self.mel_freqs[i]
-            fmax = self.mel_freqs[i + 1]
+        # Move mel_freqs to the same device as x
+        mel_freqs = self.mel_freqs.to(x.device)
+        hsupp = self.hsupp.to(x.device)
+        
+        for i in range(len(mel_freqs) - 1):
+            fmin = mel_freqs[i]
+            fmax = mel_freqs[i + 1]
             
             hHigh = (2 * fmax / self.sample_rate) * torch.sinc(
-                2 * fmax * self.hsupp / self.sample_rate)
+                2 * fmax * hsupp / self.sample_rate)
             hLow = (2 * fmin / self.sample_rate) * torch.sinc(
-                2 * fmin * self.hsupp / self.sample_rate)
+                2 * fmin * hsupp / self.sample_rate)
             hideal = hHigh - hLow
             
             band_pass_filter[i, :] = torch.from_numpy(np.hamming(
-                self.kernel_size)).to(x.dtype) * hideal
+                self.kernel_size)).to(x.device).to(x.dtype) * hideal
         
         if mask:
             A = np.random.randint(0, 20)
             A0 = random.randint(0, band_pass_filter.shape[0] - max(1, A))
             band_pass_filter[A0:A0 + max(1, A), :] = 0
         
-        filters = band_pass_filter.unsqueeze(1).to(x.device)
+        filters = band_pass_filter.unsqueeze(1)
         return F.conv1d(x, filters, padding=self.kernel_size // 2)
 
 
@@ -331,4 +337,3 @@ class Model(nn.Module):
         
         return embeddings, output
 
- 
