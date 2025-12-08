@@ -3,10 +3,28 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class BasicBlock(nn.Module):
+class SEBlock(nn.Module):
+    def __init__(self, channels, reduction=16):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        w = self.fc(x).view(b, c, 1, 1)
+        return x * w
+
+
+class BasicBlockSE(nn.Module):
     expansion = 1
 
-    def __init__(self, in_planes, planes, stride=1, downsample=None):
+    def __init__(self, in_planes, planes, stride=1, downsample=None, reduction=16):
         super().__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3,
                                stride=stride, padding=1, bias=False)
@@ -16,13 +34,15 @@ class BasicBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
+        self.se = SEBlock(planes, reduction)
 
     def forward(self, x):
         identity = x if self.downsample is None else self.downsample(x)
         out = self.relu(self.bn1(self.conv1(x)))
         out = self.bn2(self.conv2(out))
-        out = self.relu(out + identity)
-        return out
+        out = self.se(out)
+        out += identity
+        return self.relu(out)
 
 
 class ResNetMelBackbone(nn.Module):
@@ -52,7 +72,6 @@ class ResNetMelBackbone(nn.Module):
                           stride=stride, bias=False),
                 nn.BatchNorm2d(planes * block.expansion),
             )
-
         layers = [block(self.in_planes, planes, stride, downsample)]
         self.in_planes = planes * block.expansion
         for _ in range(1, blocks):
@@ -68,6 +87,7 @@ class ResNetMelBackbone(nn.Module):
                 nn.init.constant_(m.bias, 0.0)
 
     def forward(self, x):
+        # x shape: (B, 1, n_mels, frames) or (B, n_mels, frames)
         if x.dim() == 3:
             x = x.unsqueeze(1)
         x = self.stem(x)
@@ -75,30 +95,76 @@ class ResNetMelBackbone(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
-        return x
+        return x  # (B, C, H, T)
+
+
+class AttentiveStatPool(nn.Module):
+    """
+    Attentive statistics pooling over time (used in speaker/anti-spoof models).
+    Input: (B, C, T) -> Output: (B, C*2) concatenation of weighted mean and std.
+    """
+    def __init__(self, in_dim, bottleneck_dim=128):
+        super().__init__()
+        self.att = nn.Sequential(
+            nn.Conv1d(in_dim, bottleneck_dim, kernel_size=1),
+            nn.ReLU(inplace=True),
+            nn.Conv1d(bottleneck_dim, 1, kernel_size=1),
+        )
+
+    def forward(self, x, eps=1e-12):
+        # x: (B, C, T)
+        w = self.att(x)  # (B, 1, T)
+        w = F.softmax(w, dim=2)
+        mu = (x * w).sum(dim=2)  # (B, C)
+        sigma = torch.sqrt(torch.clamp((x ** 2 * w).sum(dim=2) - mu ** 2, min=eps))
+        return torch.cat([mu, sigma], dim=1)  # (B, C*2)
 
 
 class Model(nn.Module):
+    """
+    SE-ResNet + AttentiveStatPool for mel spectrogram input (--feature 1).
+    Recommended: use n_mels=128, frames padded to fixed length by feature extractor.
+    """
     def __init__(self, d_args):
         super().__init__()
         block_channels = d_args.get("block_channels", [64, 128, 256, 512])
-        layers = d_args.get("layers", [2, 2, 2, 2])
+        layers = d_args.get("layers", [3, 4, 6, 3])  # ResNet-34/50 style; default is stronger
         dropout = d_args.get("dropout", 0.3)
+        bottleneck_att = d_args.get("att_bottleneck", 128)
 
-        self.backbone = ResNetMelBackbone(BasicBlock, layers, block_channels)
-        self.global_pool = nn.AdaptiveAvgPool2d(1)
-        self.embedding_dim = self.backbone.out_dim
+        self.backbone = ResNetMelBackbone(BasicBlockSE, layers, block_channels)
+        self.embedding_channels = self.backbone.out_dim  # C
+        self.pool = AttentiveStatPool(self.embedding_channels, bottleneck_dim=bottleneck_att)
 
+        emb_dim = self.embedding_channels * 2
         self.classifier = nn.Sequential(
-            nn.Linear(self.embedding_dim, 256),
+            nn.Linear(emb_dim, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(512, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout),
             nn.Linear(256, 2),
         )
 
+        self._init_weights()
+
+    def _init_weights(self):
+        # keep light initialization for linear layers
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0.0)
+
     def forward(self, x, Freq_aug=False):
-        feats = self.backbone(x)
-        pooled = self.global_pool(feats).flatten(1)
-        out = self.classifier(pooled)
-        return pooled, out
+        # x: (B, n_mels, frames) or (B, 1, n_mels, frames)
+        feats = self.backbone(x)  # (B, C, H, T)
+        # collapse frequency axis (H) and keep temporal axis (T) for pooling
+        # do mean over frequency axis
+        seq = feats.mean(dim=2)  # (B, C, T)
+        emb = self.pool(seq)     # (B, C*2)
+        out = self.classifier(emb)
+        return emb, out
