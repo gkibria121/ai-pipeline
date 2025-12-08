@@ -159,7 +159,7 @@ def main(args: argparse.Namespace) -> None:
 
     # get optimizer and scheduler
     optim_config["steps_per_epoch"] = len(trn_loader)
-    optimizer, scheduler = create_optimizer(model.parameters(), optim_config)
+    optimizer, lr_scheduler = create_optimizer(model.parameters(), optim_config)
     optimizer_swa = SWA(optimizer)
 
     best_dev_eer = 1.
@@ -178,7 +178,7 @@ def main(args: argparse.Namespace) -> None:
     for epoch in range(config["num_epochs"]):
         print(f"Start training epoch {epoch+1}/{config['num_epochs']}")
         running_loss = train_epoch(trn_loader, model, optimizer, device,
-                                   scheduler, config)
+                                   criterion)
         produce_evaluation_file(dev_loader, model, device,
                                 metric_path/"dev_score.txt", dev_trial_path, config)
         dev_eer, dev_tdcf = calculate_tDCF_EER(
