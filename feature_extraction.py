@@ -41,6 +41,21 @@ class FeatureExtractor:
         start = max(0, (t - self.target_frames) // 2)
         return spec[:, start:start + self.target_frames]
 
+    def _apply_cmvn(self, spec: np.ndarray, eps=1e-9):
+        # spec: (freq, time) or (channels, freq, time)
+        if spec.ndim == 2:
+            m = spec.mean(axis=1, keepdims=True)
+            s = spec.std(axis=1, keepdims=True)
+            return (spec - m) / (s + eps)
+        else:
+            # per-channel, per-frequency normalization
+            C, F, T = spec.shape
+            spec2 = spec.reshape(C * F, T)
+            m = spec2.mean(axis=1, keepdims=True)
+            s = spec2.std(axis=1, keepdims=True)
+            spec2 = (spec2 - m) / (s + eps)
+            return spec2.reshape(C, F, T)
+
     def extract_raw_audio(self, audio):
         """Feature 0: Raw audio (no processing)"""
         # Ensure fixed length of nb_samp (64600 default)
@@ -51,13 +66,16 @@ class FeatureExtractor:
             audio = audio[:nb_samp]
         return audio.astype(np.float32)
     
-    def extract_mel_spectrogram(self, audio):
+    def extract_mel_spectrogram(self, audio, augment=False):
         """Feature 1: Mel Spectrogram (padded/truncated to fixed frames)"""
         mel_spec = librosa.feature.melspectrogram(
-            y=audio, sr=self.sr, n_fft=self.n_fft, 
+            y=audio, sr=self.sr, n_fft=self.n_fft,
             hop_length=self.n_fft//4, n_mels=self.n_mels)
         log_mel = librosa.power_to_db(mel_spec, ref=np.max)
         log_mel = self._pad_truncate_time(log_mel)
+        if (augment or self.spec_augment):
+            log_mel = self._spec_augment(log_mel)
+        log_mel = self._apply_cmvn(log_mel)
         return log_mel.astype(np.float32)
     
     def extract_mfcc(self, audio):
@@ -88,6 +106,20 @@ class FeatureExtractor:
         log_cqt = self._pad_truncate_time(log_cqt)
         return log_cqt.astype(np.float32)
     
+    def extract_mel_with_delta(self, audio, augment=False):
+        """Extract mel spectrogram and its delta and delta-delta"""
+        m = self.extract_mel_spectrogram(audio, augment=augment)
+        delta = librosa.feature.delta(m)
+        delta2 = librosa.feature.delta(m, order=2)
+        stacked = np.vstack([m, delta, delta2])  # (3*n_mels, time)
+        # reshape to (C, F, T) where C=3, F=n_mels
+        C = 3
+        stacked = stacked.reshape(C, self.n_mels, -1)
+        # pad/truncate in time to target_frames
+        stacked = np.stack([self._pad_truncate_time(ch) for ch in stacked])
+        stacked = self._apply_cmvn(stacked)
+        return stacked.astype(np.float32)
+    
     def extract_feature(self, audio, feature_type=0):
         """
         Extract specified feature type
@@ -109,6 +141,8 @@ class FeatureExtractor:
             return self.extract_lfcc(audio)
         elif feature_type == 4:
             return self.extract_cqt(audio)
+        elif feature_type == 5:
+            return self.extract_mel_with_delta(audio)
         else:
             raise ValueError(f"Unknown feature type: {feature_type}")
 
