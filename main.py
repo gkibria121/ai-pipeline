@@ -260,9 +260,10 @@ def get_loader(
     track = config["track"]
     prefix_2019 = "ASVspoof2019.{}".format(track)
 
-    trn_database_path = database_path / "ASVspoof2019_{}_train/".format(track)
-    dev_database_path = database_path / "ASVspoof2019_{}_dev/".format(track)
-    eval_database_path = database_path / "ASVspoof2019_{}_eval/".format(track)
+    # Updated paths to include /flac/ subdirectory
+    trn_database_path = database_path / "ASVspoof2019_{}_train/flac/".format(track)
+    dev_database_path = database_path / "ASVspoof2019_{}_dev/flac/".format(track)
+    eval_database_path = database_path / "ASVspoof2019_{}_eval/flac/".format(track)
 
     trn_list_path = (database_path /
                      "ASVspoof2019_{}_cm_protocols/{}.cm.train.trn.txt".format(

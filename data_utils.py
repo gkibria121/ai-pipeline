@@ -73,13 +73,29 @@ class Dataset_ASVspoof2019_train(Dataset):
 
     def __getitem__(self, index):
         utt_id = self.list_IDs[index]
-        filepath = self.base_dir / f"{utt_id}.flac"
+        # Try multiple path variations
+        possible_paths = [
+            self.base_dir / f"{utt_id}.flac",
+            self.base_dir / "flac" / f"{utt_id}.flac",
+            self.base_dir / f"{utt_id}.wav",
+            self.base_dir / "flac" / f"{utt_id}.wav",
+        ]
         
-        try:
-            audio, sr = librosa.load(filepath, sr=self.sample_rate)
-        except Exception as e:
-            print(f"Error loading {filepath}: {e}")
+        filepath = None
+        for path in possible_paths:
+            if path.exists():
+                filepath = path
+                break
+        
+        if filepath is None:
+            print(f"Warning: File not found for {utt_id}. Tried: {possible_paths[0]}")
             audio = np.zeros(64600)
+        else:
+            try:
+                audio, sr = librosa.load(str(filepath), sr=self.sample_rate)
+            except Exception as e:
+                print(f"Error loading {filepath}: {e}")
+                audio = np.zeros(64600)
         
         feature = self.extractor.extract_feature(audio, self.feature_type)
         feature = torch.FloatTensor(feature)
@@ -100,13 +116,29 @@ class Dataset_ASVspoof2019_devNeval(Dataset):
 
     def __getitem__(self, index):
         utt_id = self.list_IDs[index]
-        filepath = self.base_dir / f"{utt_id}.flac"
+        # Try multiple path variations
+        possible_paths = [
+            self.base_dir / f"{utt_id}.flac",
+            self.base_dir / "flac" / f"{utt_id}.flac",
+            self.base_dir / f"{utt_id}.wav",
+            self.base_dir / "flac" / f"{utt_id}.wav",
+        ]
         
-        try:
-            audio, sr = librosa.load(filepath, sr=self.sample_rate)
-        except Exception as e:
-            print(f"Error loading {filepath}: {e}")
+        filepath = None
+        for path in possible_paths:
+            if path.exists():
+                filepath = path
+                break
+        
+        if filepath is None:
+            print(f"Warning: File not found for {utt_id}. Tried: {possible_paths[0]}")
             audio = np.zeros(64600)
+        else:
+            try:
+                audio, sr = librosa.load(str(filepath), sr=self.sample_rate)
+            except Exception as e:
+                print(f"Error loading {filepath}: {e}")
+                audio = np.zeros(64600)
         
         feature = self.extractor.extract_feature(audio, self.feature_type)
         feature = torch.FloatTensor(feature)
