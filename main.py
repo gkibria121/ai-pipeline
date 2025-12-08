@@ -49,6 +49,11 @@ def main(args: argparse.Namespace) -> None:
     if "freq_aug" not in config:
         config["freq_aug"] = "False"
 
+    # Override model path with command-line argument if provided
+    if args.eval_model_weights is not None:
+        config["model_path"] = args.eval_model_weights
+        print(f"Using model weights from command-line: {args.eval_model_weights}")
+
     # make experiment reproducible
     set_seed(args.seed, config)
 
@@ -93,9 +98,14 @@ def main(args: argparse.Namespace) -> None:
 
     # evaluates pretrained model and exit script
     if args.eval:
+        model_path = config["model_path"]
+        if not os.path.exists(model_path):
+            print(f"Error: Model file not found at {model_path}")
+            sys.exit(1)
+        
         model.load_state_dict(
-            torch.load(config["model_path"], map_location=device))
-        print("Model loaded : {}".format(config["model_path"]))
+            torch.load(model_path, map_location=device))
+        print("Model loaded : {}".format(model_path))
         print("Start evaluation...")
         produce_evaluation_file(eval_loader, model, device,
                                 eval_score_path, eval_trial_path)
@@ -110,6 +120,7 @@ def main(args: argparse.Namespace) -> None:
             asv_score_file=database_path / config["asv_score_path"],
             output_file=model_tag/"loaded_model_t-DCF_EER.txt",
             output_dir=model_tag / "plots")
+        print(f"Evaluation complete. EER: {eval_eer:.4f}%, t-DCF: {eval_tdcf:.5f}")
         sys.exit(0)
 
     # get optimizer and scheduler
