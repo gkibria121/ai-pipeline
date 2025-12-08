@@ -1,6 +1,7 @@
 """
 Transformer-based model for ASVspoof detection
 Uses self-attention mechanisms to detect audio spoofing
+Memory-efficient version with sequence reduction
 """
 
 import torch
@@ -11,13 +12,9 @@ import math
 
 class PositionalEncoding(nn.Module):
     """Positional encoding for transformer"""
-    def __init__(self, d_model, max_len=10000):
+    def __init__(self, d_model, max_len=5000):
         super().__init__()
         self.d_model = d_model
-        self.max_len = max_len
-        self._create_pe_buffer(max_len, d_model)
-
-    def _create_pe_buffer(self, max_len, d_model):
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
@@ -31,40 +28,39 @@ class PositionalEncoding(nn.Module):
 
     def forward(self, x):
         # x: (batch_size, seq_len, d_model)
-        seq_len = x.size(1)
-        
-        # Extend PE buffer if sequence is longer than max_len
-        if seq_len > self.pe.size(1):
-            self._create_pe_buffer(seq_len + 1000, self.d_model)
-        
-        return x + self.pe[:, :seq_len, :].to(x.device)
+        seq_len = min(x.size(1), self.pe.size(1))
+        return x[:, :seq_len, :] + self.pe[:, :seq_len, :].to(x.device)
 
 
 class AudioPreprocessor(nn.Module):
-    """Preprocess raw audio into embeddings"""
-    def __init__(self, d_model=256):
+    """Preprocess raw audio into embeddings with aggressive downsampling"""
+    def __init__(self, d_model=128):
         super().__init__()
         # Conv layers to extract features from raw audio
-        self.conv1 = nn.Conv1d(1, 64, kernel_size=80, stride=4, padding=38)
-        self.bn1 = nn.BatchNorm1d(64)
-        self.conv2 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.BatchNorm1d(128)
-        self.conv3 = nn.Conv1d(128, d_model, kernel_size=3, stride=2, padding=1)
+        self.conv1 = nn.Conv1d(1, 32, kernel_size=80, stride=4, padding=38)
+        self.bn1 = nn.BatchNorm1d(32)
+        
+        self.conv2 = nn.Conv1d(32, 64, kernel_size=3, stride=2, padding=1)
+        self.bn2 = nn.BatchNorm1d(64)
+        
+        self.conv3 = nn.Conv1d(64, d_model, kernel_size=3, stride=4, padding=1)
         self.bn3 = nn.BatchNorm1d(d_model)
+        
         self.relu = nn.ReLU()
         
     def forward(self, x):
         # x: (batch_size, nb_samp)
         x = x.unsqueeze(1)  # (batch_size, 1, nb_samp)
-        x = self.relu(self.bn1(self.conv1(x)))
-        x = self.relu(self.bn2(self.conv2(x)))
-        x = self.relu(self.bn3(self.conv3(x)))
+        x = self.relu(self.bn1(self.conv1(x)))  # stride 4
+        x = self.relu(self.bn2(self.conv2(x)))  # stride 2
+        x = self.relu(self.bn3(self.conv3(x)))  # stride 4
+        # Total stride: 4*2*4 = 32
         x = x.transpose(1, 2)  # (batch_size, seq_len, d_model)
         return x
 
 
 class TransformerBlock(nn.Module):
-    """Transformer encoder block"""
+    """Lightweight Transformer encoder block"""
     def __init__(self, d_model, nhead, dim_feedforward, dropout=0.1):
         super().__init__()
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, 
@@ -79,12 +75,12 @@ class TransformerBlock(nn.Module):
         self.dropout3 = nn.Dropout(dropout)
 
     def forward(self, x):
-        # Self-attention block
+        # Self-attention block with residual
         attn_out, _ = self.multihead_attn(x, x, x)
         x = x + self.dropout1(attn_out)
         x = self.norm1(x)
         
-        # Feedforward block
+        # Feedforward block with residual
         ff_out = self.linear2(self.dropout2(F.relu(self.linear1(x))))
         x = x + self.dropout3(ff_out)
         x = self.norm2(x)
@@ -92,25 +88,25 @@ class TransformerBlock(nn.Module):
 
 
 class Model(nn.Module):
-    """Transformer-based ASVspoof detection model"""
+    """Memory-efficient Transformer for ASVspoof detection"""
     def __init__(self, d_args):
         super().__init__()
         self.d_args = d_args
         
         # Model parameters
-        d_model = d_args.get("d_model", 256)
-        nhead = d_args.get("nhead", 8)
-        num_layers = d_args.get("num_layers", 4)
-        dim_feedforward = d_args.get("dim_feedforward", 1024)
+        d_model = d_args.get("d_model", 128)
+        nhead = d_args.get("nhead", 4)
+        num_layers = d_args.get("num_layers", 2)
+        dim_feedforward = d_args.get("dim_feedforward", 512)
         dropout = d_args.get("dropout", 0.1)
         
-        # Audio preprocessing
+        # Audio preprocessing with aggressive downsampling
         self.preprocessor = AudioPreprocessor(d_model=d_model)
         
         # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_len=10000)
+        self.pos_encoder = PositionalEncoding(d_model, max_len=5000)
         
-        # Transformer encoder blocks
+        # Transformer encoder blocks (reduced layers for memory)
         self.transformer_blocks = nn.Sequential(
             *[TransformerBlock(d_model, nhead, dim_feedforward, dropout) 
               for _ in range(num_layers)]
@@ -120,10 +116,10 @@ class Model(nn.Module):
         self.dropout = nn.Dropout(dropout)
         
         # Classification head
-        self.fc1 = nn.Linear(d_model, 512)
+        self.fc1 = nn.Linear(d_model, 256)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(512, 256)
-        self.fc3 = nn.Linear(256, 2)
+        self.fc2 = nn.Linear(256, 128)
+        self.fc3 = nn.Linear(128, 2)
         
     def forward(self, x, Freq_aug=False):
         """
@@ -135,7 +131,7 @@ class Model(nn.Module):
             embeddings: feature embeddings
             output: logits for classification
         """
-        # Preprocess audio
+        # Preprocess audio with downsampling (reduces sequence length significantly)
         x = self.preprocessor(x)  # (batch_size, seq_len, d_model)
         
         # Add positional encoding
