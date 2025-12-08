@@ -235,13 +235,12 @@ class Model(nn.Module):
         self.conv_time = SincConv(out_channels=filts[0], 
                                   kernel_size=d_args.get("first_conv", 128))
         self.first_bn = nn.BatchNorm1d(filts[0])
-        self.first_se = SEBlock(filts[0])
         
         # ============================================
-        # Stage 2: Standard CNN preprocessing before Res2Net
+        # Stage 2: Convert 1D to 2D representation
         # ============================================
-        self.conv_2d_1 = nn.Conv2d(1, filts[0], kernel_size=(3, 3), padding=(1, 1))
-        self.bn_2d_1 = nn.BatchNorm2d(filts[0])
+        self.conv1d_to_2d = nn.Conv1d(filts[0], filts[0], kernel_size=3, padding=1)
+        self.bn1d_to_2d = nn.BatchNorm1d(filts[0])
         
         # ============================================
         # Stage 3: Res2Net Encoder (Multi-scale)
@@ -296,49 +295,49 @@ class Model(nn.Module):
         x = F.relu(x)
         
         # ============================================
-        # Stage 2: Convert to 2D for Res2Net encoder
+        # Stage 2: Additional 1D processing
         # ============================================
-        # Use spectrogram-like representation
+        x = self.conv1d_to_2d(x)  # (bs, filts[0], time)
+        x = self.bn1d_to_2d(x)
+        x = F.relu(x)
+        
+        # ============================================
+        # Stage 3: Convert to 2D spectrogram-like format
+        # ============================================
         bs, channels, time = x.size()
-        # Reshape to (bs, channels, freq_bins, time_frames)
-        x = x.unsqueeze(2)  # (bs, filts[0], 1, time)
-        
-        # Expand to create 2D representation
-        x = x.expand(bs, channels, 64, time)  # (bs, filts[0], 64, time)
-        
-        # Apply 2D convolution
-        x = F.relu(self.bn_2d_1(self.conv_2d_1(x.unsqueeze(1))))  # (bs, filts[0], 64, time)
-        x = x.squeeze(1)  # Remove extra dimension if added
-        
-        # ============================================
-        # Stage 3: Res2Net Encoder
-        # ============================================
-        # Reshape for 2D processing
+        # Create a 2D representation by reshaping
+        # (bs, filts[0], time) -> (bs, 1, filts[0], time)
         x = x.unsqueeze(1)  # (bs, 1, filts[0], time)
+        
+        # ============================================
+        # Stage 4: Res2Net Encoder
+        # ============================================
         x = self.encoder(x)  # (bs, filts[3], freq, time)
         
         # ============================================
-        # Stage 4a: Spectral Processing
+        # Stage 5a: Spectral Processing
         # ============================================
+        # Max pooling over time dimension
         x_spectral, _ = torch.max(torch.abs(x), dim=3)  # (bs, filts[3], freq)
         x_spectral = x_spectral.transpose(1, 2)  # (bs, freq, filts[3])
         gat_spectral = self.gat_spectral(x_spectral)  # (bs, freq, gat_dims[0])
         pool_spectral = self.adaptive_pool_spectral(
             gat_spectral.transpose(1, 2))  # (bs, gat_dims[0], 1)
-        pool_spectral = pool_spectral.squeeze(-1)
+        pool_spectral = pool_spectral.squeeze(-1)  # (bs, gat_dims[0])
         
         # ============================================
-        # Stage 4b: Temporal Processing
+        # Stage 5b: Temporal Processing
         # ============================================
+        # Max pooling over frequency dimension
         x_temporal, _ = torch.max(torch.abs(x), dim=2)  # (bs, filts[3], time)
         x_temporal = x_temporal.transpose(1, 2)  # (bs, time, filts[3])
         gat_temporal = self.gat_temporal(x_temporal)  # (bs, time, gat_dims[0])
         pool_temporal = self.adaptive_pool_temporal(
             gat_temporal.transpose(1, 2))  # (bs, gat_dims[0], 1)
-        pool_temporal = pool_temporal.squeeze(-1)
+        pool_temporal = pool_temporal.squeeze(-1)  # (bs, gat_dims[0])
         
         # ============================================
-        # Stage 4c: Fused Representation
+        # Stage 5c: Fused Representation
         # ============================================
         x_fused = torch.cat([gat_spectral, gat_temporal], 
                            dim=1)  # (bs, freq+time, gat_dims[0])
@@ -346,14 +345,14 @@ class Model(nn.Module):
         pool_fused = gat_fused.mean(dim=1)  # (bs, gat_dims[1])
         
         # ============================================
-        # Stage 5: Feature Aggregation
+        # Stage 6: Feature Aggregation
         # ============================================
         embeddings = torch.cat([pool_spectral, pool_temporal, 
                                pool_fused, pool_fused], dim=1)
         embeddings = self.dropout(embeddings)
         
         # ============================================
-        # Stage 6: Classification
+        # Stage 7: Classification
         # ============================================
         output = self.output_layer(embeddings)
         
