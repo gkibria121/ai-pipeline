@@ -238,7 +238,13 @@ class Model(nn.Module):
         self.first_se = SEBlock(filts[0])
         
         # ============================================
-        # Stage 2: Res2Net Encoder (Multi-scale)
+        # Stage 2: Standard CNN preprocessing before Res2Net
+        # ============================================
+        self.conv_2d_1 = nn.Conv2d(1, filts[0], kernel_size=(3, 3), padding=(1, 1))
+        self.bn_2d_1 = nn.BatchNorm2d(filts[0])
+        
+        # ============================================
+        # Stage 3: Res2Net Encoder (Multi-scale)
         # ============================================
         self.encoder = nn.Sequential(
             Res2NetBlock(filts[0], filts[1], scale=4, stride=1),
@@ -250,7 +256,7 @@ class Model(nn.Module):
         )
         
         # ============================================
-        # Stage 3: Multi-head Graph Attention
+        # Stage 4: Multi-head Graph Attention
         # ============================================
         self.gat_spectral = MultiHeadGraphAttentionLayer(
             filts[3], gat_dims[0], num_heads=4)
@@ -260,13 +266,13 @@ class Model(nn.Module):
             gat_dims[0], gat_dims[1], num_heads=4)
         
         # ============================================
-        # Stage 4: Adaptive Pooling
+        # Stage 5: Adaptive Pooling
         # ============================================
         self.adaptive_pool_spectral = nn.AdaptiveAvgPool1d(1)
         self.adaptive_pool_temporal = nn.AdaptiveAvgPool1d(1)
         
         # ============================================
-        # Stage 5: Classification Head
+        # Stage 6: Classification Head
         # ============================================
         self.dropout = nn.Dropout(0.3)
         self.output_layer = nn.Linear(gat_dims[1] * 4, 2)
@@ -282,21 +288,37 @@ class Model(nn.Module):
             output: (bs, 2) - classification logits
         """
         # ============================================
-        # Stage 1: SincConv Front-end
+        # Stage 1: SincConv Front-end (1D)
         # ============================================
         x = x.unsqueeze(1)  # (bs, 1, nb_samp)
         x = self.conv_time(x, mask=Freq_aug)  # (bs, filts[0], time)
         x = self.first_bn(x)
         x = F.relu(x)
-        x = x.unsqueeze(1)  # (bs, 1, filts[0], time)
         
         # ============================================
-        # Stage 2: Res2Net Encoder
+        # Stage 2: Convert to 2D for Res2Net encoder
         # ============================================
+        # Use spectrogram-like representation
+        bs, channels, time = x.size()
+        # Reshape to (bs, channels, freq_bins, time_frames)
+        x = x.unsqueeze(2)  # (bs, filts[0], 1, time)
+        
+        # Expand to create 2D representation
+        x = x.expand(bs, channels, 64, time)  # (bs, filts[0], 64, time)
+        
+        # Apply 2D convolution
+        x = F.relu(self.bn_2d_1(self.conv_2d_1(x.unsqueeze(1))))  # (bs, filts[0], 64, time)
+        x = x.squeeze(1)  # Remove extra dimension if added
+        
+        # ============================================
+        # Stage 3: Res2Net Encoder
+        # ============================================
+        # Reshape for 2D processing
+        x = x.unsqueeze(1)  # (bs, 1, filts[0], time)
         x = self.encoder(x)  # (bs, filts[3], freq, time)
         
         # ============================================
-        # Stage 3a: Spectral Processing
+        # Stage 4a: Spectral Processing
         # ============================================
         x_spectral, _ = torch.max(torch.abs(x), dim=3)  # (bs, filts[3], freq)
         x_spectral = x_spectral.transpose(1, 2)  # (bs, freq, filts[3])
@@ -306,7 +328,7 @@ class Model(nn.Module):
         pool_spectral = pool_spectral.squeeze(-1)
         
         # ============================================
-        # Stage 3b: Temporal Processing
+        # Stage 4b: Temporal Processing
         # ============================================
         x_temporal, _ = torch.max(torch.abs(x), dim=2)  # (bs, filts[3], time)
         x_temporal = x_temporal.transpose(1, 2)  # (bs, time, filts[3])
@@ -316,7 +338,7 @@ class Model(nn.Module):
         pool_temporal = pool_temporal.squeeze(-1)
         
         # ============================================
-        # Stage 3c: Fused Representation
+        # Stage 4c: Fused Representation
         # ============================================
         x_fused = torch.cat([gat_spectral, gat_temporal], 
                            dim=1)  # (bs, freq+time, gat_dims[0])
@@ -324,14 +346,14 @@ class Model(nn.Module):
         pool_fused = gat_fused.mean(dim=1)  # (bs, gat_dims[1])
         
         # ============================================
-        # Stage 4: Feature Aggregation
+        # Stage 5: Feature Aggregation
         # ============================================
         embeddings = torch.cat([pool_spectral, pool_temporal, 
                                pool_fused, pool_fused], dim=1)
         embeddings = self.dropout(embeddings)
         
         # ============================================
-        # Stage 5: Classification
+        # Stage 6: Classification
         # ============================================
         output = self.output_layer(embeddings)
         
