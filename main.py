@@ -61,7 +61,16 @@ def main(args: argparse.Namespace) -> None:
     # Set feature type
     feature_type = args.feature
     config["feature_type"] = feature_type
-    print(f"Using feature type: {feature_type} ({FEATURE_TYPES.get(feature_type, 'unknown')})")
+    
+    # Display feature info
+    feature_name = FEATURE_TYPES.get(feature_type, 'unknown')
+    print(f"{'='*60}")
+    print(f"Feature Type: {feature_type} ({feature_name})")
+    print(f"{'='*60}")
+    
+    if args.eval:
+        print(f"⚠️  IMPORTANT: Make sure this matches training feature type!")
+        print(f"   Training feature: {feature_name}")
 
     # Override model path with command-line argument if provided
     if args.eval_model_weights is not None:
@@ -395,6 +404,22 @@ def train_epoch(
     return running_loss
 
 
+def save_checkpoint(model, config, path):
+    """Save model with metadata"""
+    checkpoint = {
+        'model_state': model.state_dict(),
+        'feature_type': config.get('feature_type', 0),
+        'config': config
+    }
+    torch.save(checkpoint, path)
+
+
+def load_checkpoint(path, device):
+    """Load model with metadata"""
+    checkpoint = torch.load(path, map_location=device)
+    return checkpoint['model_state'], checkpoint.get('feature_type', 0)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ASVspoof detection system")
     parser.add_argument("--config",
@@ -430,4 +455,12 @@ if __name__ == "__main__":
                         default=0,
                         choices=[0, 1, 2, 3, 4],
                         help="feature type: 0=raw_audio, 1=mel_spectrogram, 2=mfcc, 3=lfcc, 4=cqt (default: 0)")
-    main(parser.parse_args())
+    
+    args = parser.parse_args()
+    
+    # Validate feature type requirement for evaluation
+    if args.eval and args.feature is None:
+        parser.error("--feature is required when using --eval flag\n"
+                    "Feature types: 0=raw_audio, 1=mel_spectrogram, 2=mfcc, 3=lfcc, 4=cqt")
+    
+    main(args)
