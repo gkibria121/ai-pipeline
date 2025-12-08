@@ -154,6 +154,9 @@ def main(args: argparse.Namespace) -> None:
         print(f"Evaluation complete. EER: {eval_eer:.4f}%, t-DCF: {eval_tdcf:.5f}")
         sys.exit(0)
 
+    # create loss (keep as 'criterion')
+    criterion = nn.CrossEntropyLoss()  # or your configured loss
+
     # get optimizer and scheduler
     optim_config["steps_per_epoch"] = len(trn_loader)
     optimizer, scheduler = create_optimizer(model.parameters(), optim_config)
