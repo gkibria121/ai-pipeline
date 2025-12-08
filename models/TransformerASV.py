@@ -11,8 +11,13 @@ import math
 
 class PositionalEncoding(nn.Module):
     """Positional encoding for transformer"""
-    def __init__(self, d_model, max_len=5000):
+    def __init__(self, d_model, max_len=10000):
         super().__init__()
+        self.d_model = d_model
+        self.max_len = max_len
+        self._create_pe_buffer(max_len, d_model)
+
+    def _create_pe_buffer(self, max_len, d_model):
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * 
@@ -25,7 +30,14 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe.unsqueeze(0))
 
     def forward(self, x):
-        return x + self.pe[:, :x.size(1), :]
+        # x: (batch_size, seq_len, d_model)
+        seq_len = x.size(1)
+        
+        # Extend PE buffer if sequence is longer than max_len
+        if seq_len > self.pe.size(1):
+            self._create_pe_buffer(seq_len + 1000, self.d_model)
+        
+        return x + self.pe[:, :seq_len, :].to(x.device)
 
 
 class AudioPreprocessor(nn.Module):
@@ -96,7 +108,7 @@ class Model(nn.Module):
         self.preprocessor = AudioPreprocessor(d_model=d_model)
         
         # Positional encoding
-        self.pos_encoder = PositionalEncoding(d_model, max_len=5000)
+        self.pos_encoder = PositionalEncoding(d_model, max_len=10000)
         
         # Transformer encoder blocks
         self.transformer_blocks = nn.Sequential(
