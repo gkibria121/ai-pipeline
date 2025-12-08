@@ -373,18 +373,21 @@ def produce_evaluation_file(
     print("Scores saved to {}".format(save_path))
 
 
-def train_epoch(train_loader, model, optimizer, device, criterion, scaler=None, amp_enabled=False):
+def train_epoch(train_loader, model, optimizer, device, criterion, scaler=None, amp_enabled=False, disable_tqdm=False):
     model.train()
     running_loss = 0.0
 
-    for batch_x, batch_y in train_loader:
+    it = train_loader
+    if not disable_tqdm:
+        it = tqdm(train_loader, desc="Training", leave=False)
+
+    for batch_x, batch_y in it:
         batch_x = batch_x.to(device, non_blocking=True)
         batch_y = batch_y.to(device, non_blocking=True)
 
         optimizer.zero_grad()
-
         if amp_enabled:
-            with amp.autocast():
+            with torch.cuda.amp.autocast():
                 _, outputs = model(batch_x, Freq_aug=True)
                 loss = criterion(outputs, batch_y)
             scaler.scale(loss).backward()
@@ -398,8 +401,7 @@ def train_epoch(train_loader, model, optimizer, device, criterion, scaler=None, 
 
         running_loss += loss.item() * batch_x.size(0)
 
-    epoch_loss = running_loss / (len(train_loader.dataset) if hasattr(train_loader, "dataset") else len(train_loader))
-    return epoch_loss
+    return running_loss / len(train_loader.dataset)
 
 
 def save_checkpoint(model, config, path):
@@ -418,8 +420,8 @@ def load_checkpoint(path, device):
     return checkpoint['model_state'], checkpoint.get('feature_type', 0)
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ASVspoof detection system")
+def parse_args():
+    parser = argparse.ArgumentParser()
     parser.add_argument("--config",
                         dest="config",
                         type=str,
@@ -453,8 +455,13 @@ if __name__ == "__main__":
                         default=0,
                         choices=[0, 1, 2, 3, 4],
                         help="feature type: 0=raw_audio, 1=mel_spectrogram, 2=mfcc, 3=lfcc, 4=cqt (default: 0)")
+    parser.add_argument('--no-progress', action='store_true', help='Disable tqdm progress bars to reduce IO overhead')
     
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
     
     # Validate feature type requirement for evaluation
     if args.eval and args.feature is None:
