@@ -6,7 +6,8 @@ Supports: Raw Audio, Mel Spectrogram, MFCC, LFCC, CQT
 import numpy as np
 import librosa
 
-
+import torch
+from torch.utils.data import Dataset
 class FeatureExtractor:
     """Feature extraction module for different audio representations"""
     
