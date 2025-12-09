@@ -131,22 +131,54 @@ def precompute(database_path: Path, track: str, feature_type: int, splits, sr=16
                         # db shape: (B, n_mels, time)
                         db = db.cpu().numpy()
                         for (utt_id, cache_path), feat_arr in zip(save_pairs, db):
-                            # pad/truncate time dim if needed and apply CMVN per sample
-                            feat_proc = extractor._pad_truncate_time(feat_arr)
-                            feat_proc = extractor._apply_cmvn(feat_proc)
+                            # ensure 2D (freq, time)
                             try:
-                                np.save(str(cache_path), feat_proc, allow_pickle=False)
+                                arr = np.squeeze(feat_arr)
+                                if arr.ndim == 1:
+                                    arr = arr[np.newaxis, :]
+                                # if second dim equals n_mels, transpose
+                                if arr.ndim == 2 and arr.shape[1] == extractor.n_mels and arr.shape[0] != extractor.n_mels:
+                                    arr = arr.T
+                                if arr.ndim != 2:
+                                    # try reshape into (n_mels, -1) when possible
+                                    prod = arr.size
+                                    if extractor.n_mels and prod % extractor.n_mels == 0:
+                                        arr = arr.reshape(extractor.n_mels, prod // extractor.n_mels)
+                                    else:
+                                        # unrecoverable shape; skip
+                                        continue
+                                feat_proc = extractor._pad_truncate_time(arr)
+                                feat_proc = extractor._apply_cmvn(feat_proc)
+                                try:
+                                    np.save(str(cache_path), feat_proc, allow_pickle=False)
+                                except Exception:
+                                    pass
                             except Exception:
-                                pass
+                                # skip saving this file if processing failed
+                                continue
                     elif feature_type == 2 and getattr(extractor, 'ta_mfcc', None) is not None:
                         mfcc = extractor.ta_mfcc(wav_batch)
                         mfcc = mfcc.cpu().numpy()
                         for (utt_id, cache_path), feat_arr in zip(save_pairs, mfcc):
-                            feat_proc = extractor._pad_truncate_time(feat_arr)
                             try:
-                                np.save(str(cache_path), feat_proc, allow_pickle=False)
+                                arr = np.squeeze(feat_arr)
+                                if arr.ndim == 1:
+                                    arr = arr[np.newaxis, :]
+                                if arr.ndim == 2 and arr.shape[1] == extractor.n_mels and arr.shape[0] != extractor.n_mels:
+                                    arr = arr.T
+                                if arr.ndim != 2:
+                                    prod = arr.size
+                                    if extractor.n_mels and prod % extractor.n_mels == 0:
+                                        arr = arr.reshape(extractor.n_mels, prod // extractor.n_mels)
+                                    else:
+                                        continue
+                                feat_proc = extractor._pad_truncate_time(arr)
+                                try:
+                                    np.save(str(cache_path), feat_proc, allow_pickle=False)
+                                except Exception:
+                                    pass
                             except Exception:
-                                pass
+                                continue
                     else:
                         # fallback: compute per sample on CPU if other features
                         for (utt_id, cache_path), audio in zip(save_pairs, audios):
