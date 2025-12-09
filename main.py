@@ -57,6 +57,12 @@ def main(args: argparse.Namespace) -> None:
     # Override model_path if eval_model_weights is provided via command line
     if args.eval_model_weights is not None:
         config["model_path"] = args.eval_model_weights
+    
+    # Set feature_type in config
+    if args.feature_type is not None:
+        config["feature_type"] = args.feature_type
+    elif "feature_type" not in config:
+        config["feature_type"] = 0  # Default to raw waveform
 
     # make experiment reproducible
     set_seed(args.seed, config)
@@ -239,6 +245,7 @@ def get_loader(
         config: dict) -> List[torch.utils.data.DataLoader]:
     """Make PyTorch DataLoaders for train / developement / evaluation"""
     track = config["track"]
+    feature_type = config.get("feature_type", 0)
     prefix_2019 = "ASVspoof2019.{}".format(track)
 
     trn_database_path = database_path / "ASVspoof2019_{}_train/".format(track)
@@ -263,7 +270,8 @@ def get_loader(
 
     train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
                                            labels=d_label_trn,
-                                           base_dir=trn_database_path)
+                                           base_dir=trn_database_path,
+                                           feature_type=feature_type)
     gen = torch.Generator()
     gen.manual_seed(seed)
     trn_loader = DataLoader(train_set,
@@ -280,7 +288,8 @@ def get_loader(
     print("no. validation files:", len(file_dev))
 
     dev_set = Dataset_ASVspoof2019_devNeval(list_IDs=file_dev,
-                                            base_dir=dev_database_path)
+                                            base_dir=dev_database_path,
+                                            feature_type=feature_type)
     dev_loader = DataLoader(dev_set,
                             batch_size=config["batch_size"],
                             shuffle=False,
@@ -291,7 +300,8 @@ def get_loader(
                               is_train=False,
                               is_eval=True)
     eval_set = Dataset_ASVspoof2019_devNeval(list_IDs=file_eval,
-                                             base_dir=eval_database_path)
+                                             base_dir=eval_database_path,
+                                             feature_type=feature_type)
     eval_loader = DataLoader(eval_set,
                              batch_size=config["batch_size"],
                              shuffle=False,
@@ -401,6 +411,11 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help="number of epochs to override config (default: None, uses config value)")
+    parser.add_argument("--feature_type",
+                        type=int,
+                        default=None,
+                        choices=[0, 1, 2, 3],
+                        help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc (default: None, uses config value)")
     parser.add_argument(
         "--eval",
         action="store_true",
