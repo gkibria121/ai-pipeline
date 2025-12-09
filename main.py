@@ -46,6 +46,10 @@ def main(args: argparse.Namespace) -> None:
     if args.epochs is not None:
         config["num_epochs"] = args.epochs
     
+    # Override batch_size if provided via command line
+    if args.batch_size is not None:
+        config["batch_size"] = args.batch_size
+    
     optim_config["epochs"] = config["num_epochs"]
     track = config["track"]
     assert track in ["LA", "PA", "DF"], "Invalid track given"
@@ -412,6 +416,10 @@ if __name__ == "__main__":
                         type=int,
                         default=None,
                         help="number of epochs to override config (default: None, uses config value)")
+    parser.add_argument("--batch_size",
+                        type=int,
+                        default=None,
+                        help="batch size to override config (default: None, uses config value)")
     parser.add_argument("--feature_type",
                         type=int,
                         default=None,
