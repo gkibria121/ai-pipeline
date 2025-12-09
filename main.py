@@ -123,9 +123,9 @@ def main(args: argparse.Namespace) -> None:
     # define model architecture
     model = get_model(model_config, device)
 
-    # define dataloaders
+    # define dataloaders (pass optional features_path to load cached features)
     trn_loader, dev_loader, eval_loader = get_loader(
-        database_path, args.seed, config)
+        database_path, args.seed, config, features_path=getattr(args, "features_path", None))
 
     # evaluates pretrained model and exit script
     if args.eval:
@@ -250,9 +250,10 @@ def get_model(model_config: Dict, device: torch.device):
 
 
 def get_loader(
-        database_path: str,
-        seed: int,
-        config: dict) -> List[torch.utils.data.DataLoader]:
+    database_path: str,
+    seed: int,
+    config: dict,
+    features_path: Union[str, Path, None] = None) -> List[torch.utils.data.DataLoader]:
     """Make PyTorch DataLoaders for train / developement / evaluation"""
     track = config["track"]
     prefix_2019 = "ASVspoof2019.{}".format(track)
@@ -280,7 +281,19 @@ def get_loader(
 
     # Explicit cache directories for precomputed features
     feat_type = config.get("feature_type", 0)
-    cache_base = database_path / "features" / f"feat{feat_type}"
+
+    # If user provided `features_path`, use it as the root. It may point to
+    # either the features root or directly to a feat{n} folder. Otherwise,
+    # default to <database_path>/features
+    if features_path is not None:
+        fp = Path(features_path)
+        if fp.name.startswith("feat"):
+            cache_base = fp
+        else:
+            cache_base = fp / f"feat{feat_type}"
+    else:
+        cache_base = Path(database_path) / "features" / f"feat{feat_type}"
+
     train_cache = cache_base / "train"
 
     train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
