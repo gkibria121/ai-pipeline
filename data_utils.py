@@ -20,6 +20,7 @@ FEATURE_TYPES = {
     1: "mel_spectrogram",
     2: "lfcc",
     3: "mfcc",
+    4: "cqt",  # Constant-Q Transform - best for fake vs real audio
 }
 
 
@@ -161,7 +162,7 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
     
     Args:
         waveform: Audio waveform as numpy array
-        feature_type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc
+        feature_type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt
         sr: Sample rate (default: 16000)
     
     Returns:
@@ -200,6 +201,17 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
             y=waveform, sr=sr, n_mfcc=13, n_fft=512, hop_length=160
         )
         return mfcc
+    
+    elif feature_type == 4:
+        # Constant-Q Transform (CQT) - Best for fake vs real audio detection
+        # CQT provides better frequency resolution at lower frequencies
+        # where many deepfake artifacts appear
+        cqt = librosa.cqt(
+            y=waveform, sr=sr, hop_length=512, n_bins=84, bins_per_octave=12
+        )
+        # Convert to dB scale and take magnitude
+        cqt_db = librosa.amplitude_to_db(np.abs(cqt), ref=np.max)
+        return cqt_db
     
     else:
         raise ValueError(
@@ -263,7 +275,7 @@ class Dataset_ASVspoof2019_train(Dataset):
     def __init__(self, list_IDs, labels, base_dir, feature_type: int = 0, sr: int = 16000, random_noise: bool = False):
         """self.list_IDs	: list of strings (each string: utt key),
            self.labels      : dictionary (key: utt key, value: label integer)
-           self.feature_type: type of feature to extract (0=raw, 1=mel_spec, 2=lfcc, 3=mfcc)
+           self.feature_type: type of feature to extract (0=raw, 1=mel_spec, 2=lfcc, 3=mfcc, 4=cqt)
            self.sr          : sample rate
            self.random_noise: whether to apply random augmentation"""
         self.list_IDs = list_IDs
@@ -341,8 +353,8 @@ class Dataset_ASVspoof2019_train(Dataset):
 
 class Dataset_ASVspoof2019_devNeval(Dataset):
     def __init__(self, list_IDs, base_dir, feature_type: int = 0, sr: int = 16000):
-        """self.list_IDs	: list of strings (each string: utt key),
-           self.feature_type: type of feature to extract (0=raw, 1=mel_spec, 2=lfcc, 3=mfcc)
+        """self.list_IDs\t: list of strings (each string: utt key),
+           self.feature_type: type of feature to extract (0=raw, 1=mel_spec, 2=lfcc, 3=mfcc, 4=cqt)
            self.sr          : sample rate"""
         self.list_IDs = list_IDs
         self.base_dir = base_dir

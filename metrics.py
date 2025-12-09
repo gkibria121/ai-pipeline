@@ -94,10 +94,10 @@ class MetricsTracker:
                 f"{train_loss:.5f}",
                 f"{dev_eer:.5f}",
                 f"{dev_tdcf:.5f}",
-                f"{eval_eer:.5f}" if not np.isnan(eval_eer) else "",
-                f"{eval_tdcf:.5f}" if not np.isnan(eval_tdcf) else "",
-                f"{best_dev_eer:.5f}" if not np.isnan(best_dev_eer) else "",
-                f"{best_dev_tdcf:.5f}" if not np.isnan(best_dev_tdcf) else ""
+                f"{eval_eer:.5f}" if eval_eer is not None and not np.isnan(eval_eer) else "",
+                f"{eval_tdcf:.5f}" if eval_tdcf is not None and not np.isnan(eval_tdcf) else "",
+                f"{best_dev_eer:.5f}" if best_dev_eer is not None and not np.isnan(best_dev_eer) else "",
+                f"{best_dev_tdcf:.5f}" if best_dev_tdcf is not None and not np.isnan(best_dev_tdcf) else ""
             ])
     
     def save_json(self):
