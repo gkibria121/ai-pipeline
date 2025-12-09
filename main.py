@@ -131,7 +131,7 @@ def main(args: argparse.Namespace) -> None:
                            config["asv_score_path"],
                            output_file=model_tag / "t-DCF_EER.txt")
         print("DONE.")
-        eval_eer, eval_tdcf = calculate_tDCF_EER(
+        eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(
             cm_scores_file=eval_score_path,
             asv_score_file=database_path / config["asv_score_path"],
             output_file=model_tag/"loaded_model_t-DCF_EER.txt")
@@ -169,13 +169,13 @@ def main(args: argparse.Namespace) -> None:
         print("\nValidating on development set...")
         produce_evaluation_file(dev_loader, model, device,
                                 metric_path/"dev_score.txt", dev_trial_path)
-        dev_eer, dev_tdcf = calculate_tDCF_EER(
+        dev_eer, dev_tdcf, dev_acc = calculate_tDCF_EER(
             cm_scores_file=metric_path/"dev_score.txt",
             asv_score_file=database_path/config["asv_score_path"],
             output_file=metric_path/"dev_t-DCF_EER_{}epo.txt".format(epoch),
             printout=False)
-        print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_tdcf:{:.5f}".format(
-            running_loss, dev_eer, dev_tdcf))
+        print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_tdcf:{:.5f}, dev_acc: {:.2f}%".format(
+            running_loss, dev_eer, dev_tdcf, dev_acc))
         writer.add_scalar("loss", running_loss, epoch)
         writer.add_scalar("dev_eer", dev_eer, epoch)
         writer.add_scalar("dev_tdcf", dev_tdcf, epoch)
@@ -185,6 +185,7 @@ def main(args: argparse.Namespace) -> None:
         # Initialize eval metrics
         current_eval_eer = None
         current_eval_tdcf = None
+        current_eval_acc = None
         
         if best_dev_eer >= dev_eer:
             print("best model find at epoch", epoch)
@@ -196,11 +197,16 @@ def main(args: argparse.Namespace) -> None:
             if str_to_bool(config["eval_all_best"]):
                 produce_evaluation_file(eval_loader, model, device,
                                         eval_score_path, eval_trial_path)
-                eval_eer, eval_tdcf = calculate_tDCF_EER(
+                eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(
                     cm_scores_file=eval_score_path,
                     asv_score_file=database_path / config["asv_score_path"],
                     output_file=metric_path /
                     "t-DCF_EER_{:03d}epo.txt".format(epoch))
+                
+                # Store current eval metrics for tracking
+                current_eval_eer = eval_eer
+                current_eval_tdcf = eval_tdcf
+                current_eval_acc = eval_acc
 
                 log_text = "epoch{:03d}, ".format(epoch)
                 if eval_eer < best_eval_eer:
@@ -222,8 +228,8 @@ def main(args: argparse.Namespace) -> None:
         writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
         
         # Log epoch metrics to tracker
-        metrics_tracker.add_epoch(epoch, running_loss, dev_eer, dev_tdcf, 
-                                 current_eval_eer, current_eval_tdcf, 
+        metrics_tracker.add_epoch(epoch, running_loss, dev_eer, dev_tdcf, dev_acc,
+                                 current_eval_eer, current_eval_tdcf, current_eval_acc,
                                  best_dev_eer, best_dev_tdcf)
 
     print("Start final evaluation")
@@ -233,7 +239,7 @@ def main(args: argparse.Namespace) -> None:
         optimizer_swa.bn_update(trn_loader, model, device=device)
     produce_evaluation_file(eval_loader, model, device, eval_score_path,
                             eval_trial_path)
-    eval_eer, eval_tdcf = calculate_tDCF_EER(cm_scores_file=eval_score_path,
+    eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(cm_scores_file=eval_score_path,
                                              asv_score_file=database_path /
                                              config["asv_score_path"],
                                              output_file=model_tag / "t-DCF_EER.txt")

@@ -4,6 +4,29 @@ import os
 import numpy as np
 
 
+def compute_accuracy(bona_cm, spoof_cm, threshold):
+    """
+    Compute accuracy at a given threshold.
+    
+    Args:
+        bona_cm: Bonafide (real) scores
+        spoof_cm: Spoof (fake) scores
+        threshold: Decision threshold
+    
+    Returns:
+        accuracy: Classification accuracy (0-100%)
+    """
+    # Bonafide samples should score above threshold (predicted as real)
+    correct_bona = np.sum(bona_cm >= threshold)
+    # Spoof samples should score below threshold (predicted as fake)
+    correct_spoof = np.sum(spoof_cm < threshold)
+    
+    total_samples = len(bona_cm) + len(spoof_cm)
+    accuracy = (correct_bona + correct_spoof) / total_samples * 100
+    
+    return accuracy
+
+
 def calculate_tDCF_EER(cm_scores_file,
                        asv_score_file,
                        output_file,
@@ -55,7 +78,10 @@ def calculate_tDCF_EER(cm_scores_file,
     # EERs of the standalone systems and fix ASV operating point to
     # EER threshold
     eer_asv, asv_threshold = compute_eer(tar_asv, non_asv)
-    eer_cm = compute_eer(bona_cm, spoof_cm)[0]
+    eer_cm, cm_threshold = compute_eer(bona_cm, spoof_cm)
+    
+    # Calculate accuracy at EER threshold
+    accuracy = compute_accuracy(bona_cm, spoof_cm, cm_threshold)
 
     attack_types = [f'A{_id:02d}' for _id in range(7, 20)]
     if printout:
@@ -93,6 +119,8 @@ def calculate_tDCF_EER(cm_scores_file,
             f_res.write('\tEER\t\t= {:8.9f} % '
                         '(Equal error rate for countermeasure)\n'.format(
                             eer_cm * 100))
+            f_res.write('\tAccuracy\t= {:8.4f} % '
+                        '(Classification accuracy at EER threshold)\n'.format(accuracy))
 
             f_res.write('\nTANDEM\n')
             f_res.write('\tmin-tDCF\t\t= {:8.9f}\n'.format(min_tDCF))
@@ -105,7 +133,7 @@ def calculate_tDCF_EER(cm_scores_file,
                 )
         os.system(f"cat {output_file}")
 
-    return eer_cm * 100, min_tDCF
+    return eer_cm * 100, min_tDCF, accuracy
 
 
 def obtain_asv_error_rates(tar_asv, non_asv, spoof_asv, asv_threshold):

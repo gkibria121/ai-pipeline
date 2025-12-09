@@ -33,8 +33,10 @@ class MetricsTracker:
             'train_loss': [],
             'dev_eer': [],
             'dev_tdcf': [],
+            'dev_acc': [],
             'eval_eer': [],
             'eval_tdcf': [],
+            'eval_acc': [],
             'best_dev_eer': [],
             'best_dev_tdcf': [],
         }
@@ -50,13 +52,13 @@ class MetricsTracker:
         if not self.csv_file.exists():
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['Epoch', 'Train_Loss', 'Dev_EER', 'Dev_tDCF', 
-                                'Eval_EER', 'Eval_tDCF', 'Best_Dev_EER', 'Best_Dev_tDCF'])
+                writer.writerow(['Epoch', 'Train_Loss', 'Dev_EER', 'Dev_tDCF', 'Dev_Acc',
+                                'Eval_EER', 'Eval_tDCF', 'Eval_Acc', 'Best_Dev_EER', 'Best_Dev_tDCF'])
     
     def add_epoch(self, epoch: int, train_loss: float, dev_eer: float, 
-                  dev_tdcf: float, eval_eer: Optional[float] = None, 
-                  eval_tdcf: Optional[float] = None, best_dev_eer: float = None,
-                  best_dev_tdcf: float = None):
+                  dev_tdcf: float, dev_acc: float, eval_eer: Optional[float] = None, 
+                  eval_tdcf: Optional[float] = None, eval_acc: Optional[float] = None,
+                  best_dev_eer: float = None, best_dev_tdcf: float = None):
         """
         Add metrics for an epoch.
         
@@ -65,8 +67,10 @@ class MetricsTracker:
             train_loss: Training loss
             dev_eer: Development EER
             dev_tdcf: Development t-DCF
+            dev_acc: Development accuracy
             eval_eer: Evaluation EER (optional)
             eval_tdcf: Evaluation t-DCF (optional)
+            eval_acc: Evaluation accuracy (optional)
             best_dev_eer: Best development EER so far
             best_dev_tdcf: Best development t-DCF so far
         """
@@ -74,18 +78,20 @@ class MetricsTracker:
         self.metrics['train_loss'].append(train_loss)
         self.metrics['dev_eer'].append(dev_eer)
         self.metrics['dev_tdcf'].append(dev_tdcf)
+        self.metrics['dev_acc'].append(dev_acc)
         self.metrics['eval_eer'].append(eval_eer if eval_eer is not None else np.nan)
         self.metrics['eval_tdcf'].append(eval_tdcf if eval_tdcf is not None else np.nan)
+        self.metrics['eval_acc'].append(eval_acc if eval_acc is not None else np.nan)
         self.metrics['best_dev_eer'].append(best_dev_eer if best_dev_eer is not None else np.nan)
         self.metrics['best_dev_tdcf'].append(best_dev_tdcf if best_dev_tdcf is not None else np.nan)
         
         # Save to CSV
-        self._save_csv_row(epoch, train_loss, dev_eer, dev_tdcf, eval_eer, eval_tdcf, best_dev_eer, best_dev_tdcf)
+        self._save_csv_row(epoch, train_loss, dev_eer, dev_tdcf, dev_acc, eval_eer, eval_tdcf, eval_acc, best_dev_eer, best_dev_tdcf)
         
         # Save to JSON
         self.save_json()
     
-    def _save_csv_row(self, epoch, train_loss, dev_eer, dev_tdcf, eval_eer, eval_tdcf, best_dev_eer, best_dev_tdcf):
+    def _save_csv_row(self, epoch, train_loss, dev_eer, dev_tdcf, dev_acc, eval_eer, eval_tdcf, eval_acc, best_dev_eer, best_dev_tdcf):
         """Save a single row to CSV."""
         with open(self.csv_file, 'a', newline='') as f:
             writer = csv.writer(f)
@@ -94,8 +100,10 @@ class MetricsTracker:
                 f"{train_loss:.5f}",
                 f"{dev_eer:.5f}",
                 f"{dev_tdcf:.5f}",
+                f"{dev_acc:.2f}" if dev_acc is not None and not np.isnan(dev_acc) else "",
                 f"{eval_eer:.5f}" if eval_eer is not None and not np.isnan(eval_eer) else "",
                 f"{eval_tdcf:.5f}" if eval_tdcf is not None and not np.isnan(eval_tdcf) else "",
+                f"{eval_acc:.2f}" if eval_acc is not None and not np.isnan(eval_acc) else "",
                 f"{best_dev_eer:.5f}" if best_dev_eer is not None and not np.isnan(best_dev_eer) else "",
                 f"{best_dev_tdcf:.5f}" if best_dev_tdcf is not None and not np.isnan(best_dev_tdcf) else ""
             ])
