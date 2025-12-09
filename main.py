@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 from torchcontrib.optim import SWA
 
 from data_utils import (Dataset_ASVspoof2019_train,
@@ -128,9 +129,12 @@ def main(args: argparse.Namespace) -> None:
 
     # Training
     for epoch in range(config["num_epochs"]):
+        print("\n" + "="*50)
         print("Start training epoch{:03d}".format(epoch))
+        print("="*50)
         running_loss = train_epoch(trn_loader, model, optimizer, device,
                                    scheduler, config)
+        print("\nValidating on development set...")
         produce_evaluation_file(dev_loader, model, device,
                                 metric_path/"dev_score.txt", dev_trial_path)
         dev_eer, dev_tdcf = calculate_tDCF_EER(
@@ -300,14 +304,16 @@ def produce_evaluation_file(
         trial_lines = f_trl.readlines()
     fname_list = []
     score_list = []
-    for batch_x, utt_id in data_loader:
-        batch_x = batch_x.to(device)
-        with torch.no_grad():
-            _, batch_out = model(batch_x)
-            batch_score = (batch_out[:, 1]).data.cpu().numpy().ravel()
-        # add outputs
-        fname_list.extend(utt_id)
-        score_list.extend(batch_score.tolist())
+    with tqdm(total=len(data_loader), desc="Evaluation", unit="batch") as pbar:
+        for batch_x, utt_id in data_loader:
+            batch_x = batch_x.to(device)
+            with torch.no_grad():
+                _, batch_out = model(batch_x)
+                batch_score = (batch_out[:, 1]).data.cpu().numpy().ravel()
+            # add outputs
+            fname_list.extend(utt_id)
+            score_list.extend(batch_score.tolist())
+            pbar.update(1)
 
     assert len(trial_lines) == len(fname_list) == len(score_list)
     with open(save_path, "w") as fh:
@@ -334,25 +340,31 @@ def train_epoch(
     # set objective (Loss) functions
     weight = torch.FloatTensor([0.1, 0.9]).to(device)
     criterion = nn.CrossEntropyLoss(weight=weight)
-    for batch_x, batch_y in trn_loader:
-        batch_size = batch_x.size(0)
-        num_total += batch_size
-        ii += 1
-        batch_x = batch_x.to(device)
-        batch_y = batch_y.view(-1).type(torch.int64).to(device)
-        _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
-        batch_loss = criterion(batch_out, batch_y)
-        running_loss += batch_loss.item() * batch_size
-        optim.zero_grad()
-        batch_loss.backward()
-        optim.step()
+    with tqdm(total=len(trn_loader), desc="Training", unit="batch") as pbar:
+        for batch_x, batch_y in trn_loader:
+            batch_size = batch_x.size(0)
+            num_total += batch_size
+            ii += 1
+            batch_x = batch_x.to(device)
+            batch_y = batch_y.view(-1).type(torch.int64).to(device)
+            _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
+            batch_loss = criterion(batch_out, batch_y)
+            running_loss += batch_loss.item() * batch_size
+            optim.zero_grad()
+            batch_loss.backward()
+            optim.step()
 
-        if config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
-            scheduler.step()
-        elif scheduler is None:
-            pass
-        else:
-            raise ValueError("scheduler error, got:{}".format(scheduler))
+            if config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
+                scheduler.step()
+            elif scheduler is None:
+                pass
+            else:
+                raise ValueError("scheduler error, got:{}".format(scheduler))
+            
+            # Update progress bar with current loss
+            current_loss = running_loss / num_total
+            pbar.update(1)
+            pbar.set_postfix({"loss": f"{current_loss:.5f}"})
 
     running_loss /= num_total
     return running_loss
