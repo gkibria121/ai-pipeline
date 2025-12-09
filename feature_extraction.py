@@ -5,6 +5,7 @@ Supports: Raw Audio, Mel Spectrogram, MFCC, LFCC, CQT
 
 import numpy as np
 import librosa
+import random
 
 import torch
 from torch.utils.data import Dataset
@@ -23,6 +24,12 @@ class FeatureExtractor:
         hop = self.n_fft // 4
         default_frames = int(np.ceil(nb_samp / hop))
         self.target_frames = int(target_frames) if target_frames is not None else default_frames
+        # SpecAugment defaults (disabled by default)
+        self.spec_augment = False
+        self.freq_mask_param = 15
+        self.time_mask_param = 25
+        self.num_freq_masks = 2
+        self.num_time_masks = 2
 
     def _pad_truncate_time(self, spec: np.ndarray):
         """
@@ -73,10 +80,39 @@ class FeatureExtractor:
             hop_length=self.n_fft//4, n_mels=self.n_mels)
         log_mel = librosa.power_to_db(mel_spec, ref=np.max)
         log_mel = self._pad_truncate_time(log_mel)
-        if (augment or self.spec_augment):
+        if (augment or getattr(self, 'spec_augment', False)):
             log_mel = self._spec_augment(log_mel)
         log_mel = self._apply_cmvn(log_mel)
         return log_mel.astype(np.float32)
+
+    def _spec_augment(self, spec: np.ndarray):
+        """Apply simple SpecAugment (frequency and time masking) in-place copy.
+
+        Args:
+            spec: np.ndarray of shape (freq, time)
+        Returns:
+            augmented spec as np.ndarray
+        """
+        spec_aug = spec.copy()
+        F, T = spec_aug.shape
+
+        # Frequency masks
+        for _ in range(self.num_freq_masks):
+            f = random.randint(0, min(self.freq_mask_param, F))
+            if f == 0:
+                continue
+            f0 = random.randint(0, max(0, F - f))
+            spec_aug[f0:f0 + f, :] = spec_aug.min()
+
+        # Time masks
+        for _ in range(self.num_time_masks):
+            t = random.randint(0, min(self.time_mask_param, T))
+            if t == 0:
+                continue
+            t0 = random.randint(0, max(0, T - t))
+            spec_aug[:, t0:t0 + t] = spec_aug.min()
+
+        return spec_aug
     
     def extract_mfcc(self, audio):
         """Feature 2: MFCC (padded/truncated to fixed frames)"""
