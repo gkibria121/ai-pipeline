@@ -14,6 +14,8 @@ import numpy as np
 import librosa
 from feature_extraction import FeatureExtractor
 from data_utils import genSpoof_list
+import sys
+import errno
 
 
 def collect_ids(protocol_path: Path, split: str):
@@ -51,7 +53,15 @@ def precompute(database_path: Path, track: str, feature_type: int, splits, sr=16
             continue
 
         cache_dir = out_root / f"feat{feature_type}" / split
-        cache_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            if e.errno in (errno.EACCES, errno.EROFS, errno.EPERM) or getattr(e, 'errno', None) == 30:
+                print(f"Error: cannot create cache directory '{cache_dir}'. filesystem may be read-only or permission denied.")
+                print("Use the --features_path (or --out_root) flag to specify a writable location for cached features.")
+                sys.exit(1)
+            else:
+                raise
 
         print(f"Precomputing features for {split} -> {cache_dir} ({len(ids)} files)")
 
@@ -99,7 +109,10 @@ if __name__ == "__main__":
     parser.add_argument("--feature_type", type=int, default=1, help="Feature type (0=raw,1=mel,2=mfcc,3=lfcc,4=cqt,5=mel+delta)")
     parser.add_argument("--splits", nargs='+', default=["train", "dev", "eval"], help="Which splits to precompute")
     parser.add_argument("--out_root", default=None, help="Optional output root for cache (defaults to <database_path>/features)")
+    parser.add_argument("--features_path", default=None, help="Alias for --out_root (explicit writable path for cached features)")
     args = parser.parse_args()
 
-    out_root = Path(args.out_root) if args.out_root else None
+    # features_path takes precedence when provided (convenience alias)
+    chosen_out = args.features_path if args.features_path is not None else args.out_root
+    out_root = Path(chosen_out) if chosen_out else None
     precompute(Path(args.database_path), args.track, args.feature_type, args.splits, out_root=out_root)
