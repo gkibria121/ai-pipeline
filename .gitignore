@@ -1,9 +1,7 @@
 # etc
 _*
 .*
-exp_result/
-config/
-models/
+exp_result/ 
 depreciated/
 LA/
 notebook.ipynb
