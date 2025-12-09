@@ -41,6 +41,11 @@ def main(args: argparse.Namespace) -> None:
         config = json.loads(f_json.read())
     model_config = config["model_config"]
     optim_config = config["optim_config"]
+    
+    # Override num_epochs if provided via command line
+    if args.epochs is not None:
+        config["num_epochs"] = args.epochs
+    
     optim_config["epochs"] = config["num_epochs"]
     track = config["track"]
     assert track in ["LA", "PA", "DF"], "Invalid track given"
@@ -48,6 +53,10 @@ def main(args: argparse.Namespace) -> None:
         config["eval_all_best"] = "True"
     if "freq_aug" not in config:
         config["freq_aug"] = "False"
+    
+    # Override model_path if eval_model_weights is provided via command line
+    if args.eval_model_weights is not None:
+        config["model_path"] = args.eval_model_weights
 
     # make experiment reproducible
     set_seed(args.seed, config)
@@ -388,6 +397,10 @@ if __name__ == "__main__":
                         type=int,
                         default=1234,
                         help="random seed (default: 1234)")
+    parser.add_argument("--epochs",
+                        type=int,
+                        default=None,
+                        help="number of epochs to override config (default: None, uses config value)")
     parser.add_argument(
         "--eval",
         action="store_true",
@@ -399,5 +412,5 @@ if __name__ == "__main__":
     parser.add_argument("--eval_model_weights",
                         type=str,
                         default=None,
-                        help="directory to the model weight file (can be also given in the config file)")
+                        help="path to the model weight file (can be also given in the config file)")
     main(parser.parse_args())
