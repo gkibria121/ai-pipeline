@@ -26,6 +26,7 @@ from torchcontrib.optim import SWA
 from data_utils import (Dataset_ASVspoof2019_train,
                         Dataset_ASVspoof2019_devNeval, genSpoof_list)
 from evaluation import calculate_tDCF_EER
+from metrics import MetricsTracker, save_all_metrics
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
 
 warnings.filterwarnings("ignore", category=FutureWarning)
@@ -152,6 +153,10 @@ def main(args: argparse.Namespace) -> None:
     # make directory for metric logging
     metric_path = model_tag / "metrics"
     os.makedirs(metric_path, exist_ok=True)
+    
+    # Initialize metrics tracker
+    metrics_tracker = MetricsTracker(metric_path)
+    
     total_epochs = config["num_epochs"]
     # Training
     for epoch in range(config["num_epochs"]):
@@ -176,6 +181,11 @@ def main(args: argparse.Namespace) -> None:
         writer.add_scalar("dev_tdcf", dev_tdcf, epoch)
 
         best_dev_tdcf = min(dev_tdcf, best_dev_tdcf)
+        
+        # Initialize eval metrics
+        current_eval_eer = None
+        current_eval_tdcf = None
+        
         if best_dev_eer >= dev_eer:
             print("best model find at epoch", epoch)
             best_dev_eer = dev_eer
@@ -210,6 +220,11 @@ def main(args: argparse.Namespace) -> None:
             n_swa_update += 1
         writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
         writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
+        
+        # Log epoch metrics to tracker
+        metrics_tracker.add_epoch(epoch, running_loss, dev_eer, dev_tdcf, 
+                                 current_eval_eer, current_eval_tdcf, 
+                                 best_dev_eer, best_dev_tdcf)
 
     print("Start final evaluation")
     epoch += 1
@@ -236,6 +251,11 @@ def main(args: argparse.Namespace) -> None:
         best_eval_tdcf = eval_tdcf
         torch.save(model.state_dict(),
                    model_save_path / "best.pth")
+    
+    # Save all metrics and generate visualizations
+    save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
+                     metric_path, config)
+    
     print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}".format(
         best_eval_eer, best_eval_tdcf))
 
@@ -258,6 +278,7 @@ def get_loader(
     """Make PyTorch DataLoaders for train / developement / evaluation"""
     track = config["track"]
     feature_type = config.get("feature_type", 0)
+    random_noise = config.get("random_noise", False)
     prefix_2019 = "ASVspoof2019.{}".format(track)
 
     trn_database_path = database_path / "ASVspoof2019_{}_train/".format(track)
@@ -283,7 +304,8 @@ def get_loader(
     train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
                                            labels=d_label_trn,
                                            base_dir=trn_database_path,
-                                           feature_type=feature_type)
+                                           feature_type=feature_type,
+                                           random_noise=random_noise)
     gen = torch.Generator()
     gen.manual_seed(seed)
     trn_loader = DataLoader(train_set,
@@ -432,6 +454,9 @@ if __name__ == "__main__":
                         default=None,
                         choices=[0, 1, 2, 3],
                         help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc (default: None, uses config value)")
+    parser.add_argument("--random_noise",
+                        action="store_true",
+                        help="enable random data augmentation (gaussian noise, background noise, reverberation, pitch shift)")
     parser.add_argument(
         "--eval",
         action="store_true",
