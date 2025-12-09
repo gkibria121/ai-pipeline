@@ -67,6 +67,13 @@ def main(args: argparse.Namespace) -> None:
         config["feature_type"] = args.feature_type
     elif "feature_type" not in config:
         config["feature_type"] = 0  # Default to raw waveform
+    
+    # Set random_noise in config
+    if args.random_noise:
+        config["random_noise"] = True
+        print("Random augmentation enabled for training")
+    else:
+        config["random_noise"] = False
 
     # make experiment reproducible
     set_seed(args.seed, config)

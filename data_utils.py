@@ -260,16 +260,18 @@ def pad_random(x: np.ndarray, max_len: int = 64600):
 
 
 class Dataset_ASVspoof2019_train(Dataset):
-    def __init__(self, list_IDs, labels, base_dir, feature_type: int = 0, sr: int = 16000):
+    def __init__(self, list_IDs, labels, base_dir, feature_type: int = 0, sr: int = 16000, random_noise: bool = False):
         """self.list_IDs	: list of strings (each string: utt key),
            self.labels      : dictionary (key: utt key, value: label integer)
            self.feature_type: type of feature to extract (0=raw, 1=mel_spec, 2=lfcc, 3=mfcc)
-           self.sr          : sample rate"""
+           self.sr          : sample rate
+           self.random_noise: whether to apply random augmentation"""
         self.list_IDs = list_IDs
         self.labels = labels
         self.base_dir = base_dir
         self.feature_type = feature_type
         self.sr = sr
+        self.random_noise = random_noise
         self.cut = 64600  # take ~4 sec audio (64600 samples)
 
     def __len__(self):
@@ -279,8 +281,38 @@ class Dataset_ASVspoof2019_train(Dataset):
         key = self.list_IDs[index]
         X, sr = sf.read(str(self.base_dir / f"flac/{key}.flac"))
         
+        # Apply random augmentation if enabled (only for training)
+        if self.random_noise:
+            # Randomly select augmentation type or no augmentation
+            aug_type = np.random.randint(0, 5)  # 0-4: no_aug, gaussian, bg_noise, reverb, pitch_shift
+            X = apply_augmentation(X, augmentation_type=aug_type, sr=sr)
+        
         # Extract features
         X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+        
+        # Apply padding based on feature type
+        if self.feature_type == 0:
+            # For raw waveform, use the original padding
+            X_pad = pad_random(X_feat, self.cut)
+            x_inp = Tensor(X_pad)
+        else:
+            # For time-frequency features, pad time dimension
+            # Shape is (n_features, time_steps)
+            time_steps = X_feat.shape[1]
+            target_steps = int(self.cut / 160) + 1  # hop_length=160
+            
+            if time_steps >= target_steps:
+                stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
+                X_pad = X_feat[:, stt:stt + target_steps]
+            else:
+                # Pad if too short
+                num_repeats = int(target_steps / time_steps) + 1
+                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
+            
+            x_inp = Tensor(X_pad)
+        
+        y = self.labels[key]
+        return x_inp, y
         
         # Apply padding based on feature type
         if self.feature_type == 0:
