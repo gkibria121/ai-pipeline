@@ -16,6 +16,10 @@ from feature_extraction import FeatureExtractor
 from data_utils import genSpoof_list
 import sys
 import errno
+import warnings
+
+# Ignore non-critical warnings (user requested)
+warnings.filterwarnings("ignore")
 
 
 def collect_ids(protocol_path: Path, split: str):
