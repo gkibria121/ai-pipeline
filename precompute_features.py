@@ -33,7 +33,8 @@ def precompute(database_path: Path, track: str, feature_type: int, splits, sr=16
     if out_root is None:
         out_root = database_path / "features"
 
-    extractor = FeatureExtractor()
+    # create FeatureExtractor with defaults (can be overridden via CLI)
+    extractor = None
 
     for split in splits:
         if split == "train":
@@ -95,6 +96,12 @@ def precompute(database_path: Path, track: str, feature_type: int, splits, sr=16
                     print(f"Error loading {filepath}: {e}")
                     audio = np.zeros(64600)
 
+            # lazily construct extractor once we know device preferences from args
+            if extractor is None:
+                # default: do not use GPU unless CLI requested it
+                # `use_torch` and `use_gpu` are set from parsed args below
+                extractor = FeatureExtractor(sample_rate=sr, use_gpu=_CLI_USE_GPU, use_torch=_CLI_USE_TORCH)
+
             feat = extractor.extract_feature(audio, feature_type)
             try:
                 np.save(str(cache_path), feat, allow_pickle=False)
@@ -104,10 +111,10 @@ def precompute(database_path: Path, track: str, feature_type: int, splits, sr=16
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--database_path", required=True, help="Root path to dataset")
+    parser.add_argument("--database_path", default="LA", help="Root path to dataset (default: LA)")
     parser.add_argument("--track", default="LA", help="LA, PA or DF")
     parser.add_argument("--feature_type", type=int, default=1, help="Feature type (0=raw,1=mel,2=mfcc,3=lfcc,4=cqt,5=mel+delta)")
-    parser.add_argument("--splits", nargs='+', default=["train", "dev", "eval"], help="Which splits to precompute")
+    # Splits are fixed: train, dev, eval
     parser.add_argument("--out_root", default=None, help="Optional output root for cache (defaults to <database_path>/features)")
     parser.add_argument("--features_path", default=None, help="Alias for --out_root (explicit writable path for cached features)")
     args = parser.parse_args()
@@ -115,4 +122,13 @@ if __name__ == "__main__":
     # features_path takes precedence when provided (convenience alias)
     chosen_out = args.features_path if args.features_path is not None else args.out_root
     out_root = Path(chosen_out) if chosen_out else None
-    precompute(Path(args.database_path), args.track, args.feature_type, args.splits, out_root=out_root)
+
+    # Always attempt to use torchaudio + GPU when available (no flags needed)
+    global _CLI_USE_GPU, _CLI_USE_TORCH
+    _CLI_USE_TORCH = True
+    _CLI_USE_GPU = True
+
+    # Fixed splits
+    splits = ["train", "dev", "eval"]
+
+    precompute(Path(args.database_path), args.track, args.feature_type, splits, out_root=out_root)

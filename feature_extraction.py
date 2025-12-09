@@ -10,10 +10,18 @@ import random
 import torch
 from torch.utils.data import Dataset
 
+# optional torchaudio for GPU-accelerated feature extraction
+try:
+    import torchaudio
+    _HAS_TORCHAUDIO = True
+except Exception:
+    torchaudio = None
+    _HAS_TORCHAUDIO = False
+
 class FeatureExtractor:
     """Feature extraction module for different audio representations"""
     
-    def __init__(self, sample_rate=16000, n_fft=512, n_mels=128, n_mfcc=13, n_lfcc=13, nb_samp=64600, target_frames=None):
+    def __init__(self, sample_rate=16000, n_fft=512, n_mels=128, n_mfcc=13, n_lfcc=13, nb_samp=64600, target_frames=None, use_gpu=False, use_torch=False):
         self.sr = sample_rate
         self.n_fft = n_fft
         self.n_mels = n_mels
@@ -30,6 +38,38 @@ class FeatureExtractor:
         self.time_mask_param = 25
         self.num_freq_masks = 2
         self.num_time_masks = 2
+
+        # GPU / torchaudio options
+        self.use_torch = bool(use_torch) and _HAS_TORCHAUDIO
+        self.use_gpu = bool(use_gpu) and torch.cuda.is_available()
+        self.device = torch.device("cuda" if self.use_gpu else "cpu")
+
+        # prepare torchaudio transforms if requested and available
+        if self.use_torch:
+            # mel spectrogram
+            try:
+                self.ta_mel = torchaudio.transforms.MelSpectrogram(
+                    sample_rate=self.sr,
+                    n_fft=self.n_fft,
+                    hop_length=self.n_fft // 4,
+                    n_mels=self.n_mels,
+                    power=2.0,
+                ).to(self.device)
+                self.ta_db = torchaudio.transforms.AmplitudeToDB(stype='power').to(self.device)
+            except Exception:
+                self.use_torch = False
+                self.ta_mel = None
+                self.ta_db = None
+
+            # MFCC
+            try:
+                self.ta_mfcc = torchaudio.transforms.MFCC(sample_rate=self.sr, n_mfcc=self.n_mfcc, melkwargs={
+                    'n_fft': self.n_fft,
+                    'n_mels': self.n_mels,
+                    'hop_length': self.n_fft // 4,
+                }).to(self.device)
+            except Exception:
+                self.ta_mfcc = None
 
     def _pad_truncate_time(self, spec: np.ndarray):
         """
@@ -75,6 +115,24 @@ class FeatureExtractor:
     
     def extract_mel_spectrogram(self, audio, augment=False):
         """Feature 1: Mel Spectrogram (padded/truncated to fixed frames)"""
+        # Prefer torchaudio GPU pipeline when requested and available
+        if self.use_torch and self.ta_mel is not None:
+            # convert audio (numpy) to torch tensor on device
+            wav = torch.from_numpy(audio).float().to(self.device)
+            if wav.dim() == 1:
+                wav = wav.unsqueeze(0)
+            with torch.no_grad():
+                mel = self.ta_mel(wav)
+                db = self.ta_db(mel)
+            # db: (channel, n_mels, time)
+            db = db.squeeze(0).cpu().numpy()
+            log_mel = self._pad_truncate_time(db)
+            if (augment or getattr(self, 'spec_augment', False)):
+                log_mel = self._spec_augment(log_mel)
+            log_mel = self._apply_cmvn(log_mel)
+            return log_mel.astype(np.float32)
+
+        # Fallback to librosa CPU implementation
         mel_spec = librosa.feature.melspectrogram(
             y=audio, sr=self.sr, n_fft=self.n_fft,
             hop_length=self.n_fft//4, n_mels=self.n_mels)
@@ -116,6 +174,17 @@ class FeatureExtractor:
     
     def extract_mfcc(self, audio):
         """Feature 2: MFCC (padded/truncated to fixed frames)"""
+        # Use torchaudio MFCC if available (GPU)
+        if self.use_torch and getattr(self, 'ta_mfcc', None) is not None:
+            wav = torch.from_numpy(audio).float().to(self.device)
+            if wav.dim() == 1:
+                wav = wav.unsqueeze(0)
+            with torch.no_grad():
+                mfcc_t = self.ta_mfcc(wav)
+            mfcc_np = mfcc_t.squeeze(0).cpu().numpy()
+            mfcc_np = self._pad_truncate_time(mfcc_np)
+            return mfcc_np.astype(np.float32)
+
         mfcc = librosa.feature.mfcc(
             y=audio, sr=self.sr, n_fft=self.n_fft,
             hop_length=self.n_fft//4, n_mfcc=self.n_mfcc, n_mels=self.n_mels)
