@@ -295,6 +295,19 @@ def get_loader(
         cache_base = Path(database_path) / "features" / f"feat{feat_type}"
 
     train_cache = cache_base / "train"
+    train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
+                                           labels=d_label_trn,
+                                           base_dir=trn_database_path,
+                                           feature_type=feat_type,
+                                           cache_dir=train_cache)
+
+    # Print resolved cache paths for sanity checking
+    dev_cache = cache_base / "dev"
+    eval_cache = cache_base / "eval"
+    print("Using feature cache paths:")
+    print(f"  train -> {train_cache}")
+    print(f"  dev   -> {dev_cache}")
+    print(f"  eval  -> {eval_cache}")
 
     train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
                                            labels=d_label_trn,
@@ -457,6 +470,7 @@ def parse_args():
                         choices=[0, 1, 2, 3, 4],
                         help="feature type: 0=raw_audio, 1=mel_spectrogram, 2=mfcc, 3=lfcc, 4=cqt (default: 0)")
     parser.add_argument('--no-progress', action='store_true', help='Disable tqdm progress bars to reduce IO overhead')
+    parser.add_argument("--features_path", type=str, default=None, help="Optional path to precomputed features (root or feat{n} folder)")
     
     return parser.parse_args()
 
