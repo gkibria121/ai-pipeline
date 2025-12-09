@@ -278,10 +278,16 @@ def get_loader(
                                             is_eval=False)
     print("no. training files:", len(file_train))
 
+    # Explicit cache directories for precomputed features
+    feat_type = config.get("feature_type", 0)
+    cache_base = database_path / "features" / f"feat{feat_type}"
+    train_cache = cache_base / "train"
+
     train_set = Dataset_ASVspoof2019_train(list_IDs=file_train,
                                            labels=d_label_trn,
                                            base_dir=trn_database_path,
-                                           feature_type=config.get("feature_type", 0))
+                                           feature_type=feat_type,
+                                           cache_dir=train_cache)
     gen = torch.Generator()
     gen.manual_seed(seed)
     trn_loader = DataLoader(train_set,
@@ -296,10 +302,11 @@ def get_loader(
                                 is_train=False,
                                 is_eval=False)
     print("no. validation files:", len(file_dev))
-
+    dev_cache = cache_base / "dev"
     dev_set = Dataset_ASVspoof2019_devNeval(list_IDs=file_dev,
                                             base_dir=dev_database_path,
-                                            feature_type=config.get("feature_type", 0))
+                                            feature_type=feat_type,
+                                            cache_dir=dev_cache)
     dev_loader = DataLoader(dev_set,
                             batch_size=config["batch_size"],
                             shuffle=False,
@@ -309,9 +316,11 @@ def get_loader(
     file_eval = genSpoof_list(dir_meta=eval_trial_path,
                               is_train=False,
                               is_eval=True)
+    eval_cache = cache_base / "eval"
     eval_set = Dataset_ASVspoof2019_devNeval(list_IDs=file_eval,
                                              base_dir=eval_database_path,
-                                             feature_type=config.get("feature_type", 0))
+                                             feature_type=feat_type,
+                                             cache_dir=eval_cache)
     eval_loader = DataLoader(eval_set,
                              batch_size=config["batch_size"],
                              shuffle=False,
