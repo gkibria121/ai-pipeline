@@ -23,6 +23,138 @@ FEATURE_TYPES = {
 }
 
 
+def add_random_noise(waveform: np.ndarray, snr_db: float = 20.0) -> np.ndarray:
+    """
+    Add random Gaussian noise to waveform.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        snr_db: Signal-to-Noise Ratio in dB (higher = less noise)
+    
+    Returns:
+        Noisy waveform
+    """
+    signal_power = np.mean(waveform ** 2)
+    
+    # Calculate noise power based on SNR
+    snr_linear = 10 ** (snr_db / 10)
+    noise_power = signal_power / snr_linear
+    
+    # Generate random Gaussian noise
+    noise = np.random.normal(0, np.sqrt(noise_power), waveform.shape)
+    
+    # Add noise to signal
+    noisy_waveform = waveform + noise
+    
+    return noisy_waveform
+
+
+def add_background_noise(waveform: np.ndarray, noise_factor: float = 0.01) -> np.ndarray:
+    """
+    Add synthetic background noise (e.g., white noise, pink noise).
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        noise_factor: Noise amplitude factor (0-1)
+    
+    Returns:
+        Waveform with added background noise
+    """
+    # Generate white noise
+    noise = np.random.normal(0, 1, waveform.shape)
+    
+    # Normalize and scale
+    noise = noise / np.max(np.abs(noise)) if np.max(np.abs(noise)) > 0 else noise
+    noise = noise * noise_factor * np.max(np.abs(waveform))
+    
+    return waveform + noise
+
+
+def add_reverberation(waveform: np.ndarray, reverb_factor: float = 0.5) -> np.ndarray:
+    """
+    Add simple reverberation effect (echo).
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        reverb_factor: Echo amplitude factor (0-1)
+    
+    Returns:
+        Waveform with reverberation
+    """
+    # Create a simple echo by delaying and adding
+    delay_samples = int(0.05 * 16000)  # 50ms delay at 16kHz
+    
+    if len(waveform) <= delay_samples:
+        return waveform
+    
+    reverb = waveform.copy()
+    reverb[delay_samples:] += reverb_factor * waveform[:-delay_samples]
+    
+    # Normalize to prevent clipping
+    max_val = np.max(np.abs(reverb))
+    if max_val > 1.0:
+        reverb = reverb / max_val
+    
+    return reverb
+
+
+def add_pitch_shift(waveform: np.ndarray, semitones: float = 2.0, sr: int = 16000) -> np.ndarray:
+    """
+    Apply pitch shifting using librosa.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        semitones: Number of semitones to shift
+        sr: Sample rate
+    
+    Returns:
+        Pitch-shifted waveform
+    """
+    if not LIBROSA_AVAILABLE:
+        return waveform
+    
+    try:
+        shifted = librosa.effects.pitch_shift(waveform, sr=sr, n_steps=int(semitones))
+        return shifted
+    except Exception:
+        return waveform
+
+
+def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int = 16000) -> np.ndarray:
+    """
+    Apply various augmentations to waveform.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        augmentation_type: 0=no_aug, 1=gaussian_noise, 2=background_noise, 
+                          3=reverberation, 4=pitch_shift
+        sr: Sample rate
+    
+    Returns:
+        Augmented waveform
+    """
+    if augmentation_type == 0:
+        return waveform
+    elif augmentation_type == 1:
+        # Gaussian noise with random SNR (15-30 dB)
+        snr = np.random.uniform(15, 30)
+        return add_random_noise(waveform, snr_db=snr)
+    elif augmentation_type == 2:
+        # Background noise with random factor (0.005-0.02)
+        factor = np.random.uniform(0.005, 0.02)
+        return add_background_noise(waveform, noise_factor=factor)
+    elif augmentation_type == 3:
+        # Reverberation with random factor (0.3-0.7)
+        factor = np.random.uniform(0.3, 0.7)
+        return add_reverberation(waveform, reverb_factor=factor)
+    elif augmentation_type == 4:
+        # Pitch shift with random semitones (-2 to +2)
+        semitones = np.random.uniform(-2, 2)
+        return add_pitch_shift(waveform, semitones=semitones, sr=sr)
+    else:
+        return waveform
+
+
 def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000):
     """
     Extract different features from waveform.
