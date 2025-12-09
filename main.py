@@ -141,11 +141,12 @@ def main(args: argparse.Namespace) -> None:
     # make directory for metric logging
     metric_path = model_tag / "metrics"
     os.makedirs(metric_path, exist_ok=True)
-
+    total_epochs = config["num_epochs"]
     # Training
     for epoch in range(config["num_epochs"]):
+        epoch = epoch + 1
         print("\n" + "="*50)
-        print("Start training epoch{:03d}".format(epoch))
+        print(f"Start training epoch {epoch}/{total_epochs}")
         print("="*50)
         running_loss = train_epoch(trn_loader, model, optimizer, device,
                                    scheduler, config)
