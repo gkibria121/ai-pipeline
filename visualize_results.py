@@ -380,7 +380,7 @@ Examples:
         '--output',
         type=str,
         default=None,
-        help='Output directory for plots (default: same as metrics path)'
+        help='Output directory to save plots (if not specified, plots are only displayed)'
     )
     
     parser.add_argument(
@@ -430,14 +430,16 @@ Examples:
     
     print(f"\n✓ Loaded {len(metrics_list)} metric file(s)")
     
-    # Determine output directory
-    if args.output:
-        output_dir = Path(args.output)
-    else:
-        output_dir = paths[0].parent if len(paths) == 1 else Path('./visualization_output')
+    # Determine if we should save files
+    save_plots = args.output is not None
     
-    output_dir.mkdir(parents=True, exist_ok=True)
-    print(f"✓ Output directory: {output_dir}\n")
+    if save_plots:
+        output_dir = Path(args.output)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        print(f"✓ Saving plots to: {output_dir}\n")
+    else:
+        output_dir = None
+        print(f"📊 Displaying plots only (use --output <dir> to save)\n")
     
     # Generate visualizations
     if len(metrics_list) == 1:
@@ -447,11 +449,11 @@ Examples:
         
         print(f"📈 Generating visualizations for: {model_name}")
         
-        save_path = None if args.show and not args.output else output_dir
-        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", args.show)
-        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", args.show)
-        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", args.show)
-        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", args.show)
+        save_path = output_dir if save_plots else None
+        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", True)
+        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", True)
+        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", True)
+        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", True)
         
         if args.show_summary:
             print_summary(metrics, model_name)
@@ -460,31 +462,32 @@ Examples:
         # Multiple models
         if args.compare:
             print(f"📊 Generating comparison plots for {len(metrics_list)} models")
-            save_path = None if args.show and not args.output else output_dir / "model_comparison.png"
-            plot_comparison(metrics_list, labels, save_path, args.show)
+            save_path = output_dir / "model_comparison.png" if save_plots else None
+            plot_comparison(metrics_list, labels, save_path, True)
         
         # Individual plots for each model
         for metrics, label in zip(metrics_list, labels):
             print(f"\n📈 Generating visualizations for: {label}")
-            model_output_dir = output_dir / label
-            if not args.show or args.output:
-                model_output_dir.mkdir(parents=True, exist_ok=True)
             
-            save_base = None if args.show and not args.output else model_output_dir
-            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", args.show)
-            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", args.show)
-            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", args.show)
-            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", args.show)
+            if save_plots:
+                model_output_dir = output_dir / label
+                model_output_dir.mkdir(parents=True, exist_ok=True)
+                save_base = model_output_dir
+            else:
+                save_base = None
+            
+            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", True)
+            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", True)
+            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", True)
+            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", True)
             
             if args.show_summary:
                 print_summary(metrics, label)
     
-    if args.show:
-        print(f"\n✅ All visualizations displayed!")
-        if args.output:
-            print(f"   (Also saved to: {output_dir})")
+    if save_plots:
+        print(f"\n✅ All visualizations displayed and saved to: {output_dir}")
     else:
-        print(f"\n✅ All visualizations saved to: {output_dir}")
+        print(f"\n✅ All visualizations displayed!")
 
 
 if __name__ == "__main__":
