@@ -27,6 +27,7 @@ from pathlib import Path
 from shutil import copy
 from typing import Dict, List, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -38,7 +39,8 @@ from data_utils import (Dataset_ASVspoof2019_train,
                         Dataset_ASVspoof2019_devNeval, genSpoof_list, FEATURE_TYPES)
 from dataset_factory import get_dataset_info, create_dataset_loaders, DATASET_TYPES
 from evaluation import calculate_tDCF_EER, calculate_simple_eer_accuracy
-from metrics import MetricsTracker, save_all_metrics
+from metrics import (MetricsTracker, save_all_metrics, generate_prediction_visualizations, 
+                    display_final_summary, plot_accuracy_comparison)
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
 from feature_analysis import analyze_and_visualize_features
 
@@ -391,6 +393,44 @@ def main(args: argparse.Namespace) -> None:
     save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
                      metric_path, config)
     
+    # Generate comprehensive visualizations
+    print("\n" + "=" * 80)
+    print(" " * 20 + "GENERATING COMPREHENSIVE VISUALIZATIONS")
+    print("=" * 80)
+    
+    # Collect predictions for all splits
+    print("\n📊 Collecting predictions for visualization...")
+    
+    # Development set predictions
+    print("\n🔍 Development Set:")
+    dev_y_true, dev_y_pred, dev_y_scores = collect_predictions(dev_loader, model, device)
+    dev_metrics = generate_prediction_visualizations(
+        dev_y_true, dev_y_pred, dev_y_scores, metric_path, split_name="dev")
+    
+    # Evaluation set predictions
+    print("\n🔍 Evaluation Set:")
+    eval_y_true, eval_y_pred, eval_y_scores = collect_predictions(eval_loader, model, device)
+    eval_metrics = generate_prediction_visualizations(
+        eval_y_true, eval_y_pred, eval_y_scores, metric_path, split_name="eval")
+    
+    # Plot accuracy comparison
+    accuracy_plot_path = metric_path / "accuracy_comparison.png"
+    plot_accuracy_comparison(metrics_tracker.get_metrics(), accuracy_plot_path)
+    
+    # Calculate final evaluation metrics
+    eval_accuracy = 100 * np.sum(eval_y_true == eval_y_pred) / len(eval_y_true)
+    final_eval_metrics = {
+        'eer': eval_metrics['eer'],
+        'roc_auc': eval_metrics['roc_auc'],
+        'accuracy': eval_accuracy
+    }
+    
+    # Display comprehensive summary
+    display_final_summary(metrics_tracker.get_metrics(), final_eval_metrics, metric_path)
+    
+    print("\n✅ All visualizations generated successfully!")
+    print("=" * 80 + "\n")
+    
     if best_eval_tdcf is not None:
         print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}, Accuracy: {:.2f}%".format(
             best_eval_eer, best_eval_tdcf, best_eval_acc))
@@ -574,6 +614,47 @@ def produce_evaluation_file_simple(
             label = "bonafide" if "/real/" in fn else "spoof"
             fh.write("{} {} {}\n".format(fn, label, sco))
     print("Scores saved to {}".format(save_path))
+
+
+def collect_predictions(data_loader: DataLoader, model, device: torch.device):
+    """
+    Collect predictions, scores, and true labels for visualization.
+    
+    Returns:
+        y_true: True labels (0=fake, 1=real)
+        y_pred: Predicted labels (0=fake, 1=real)
+        y_scores: Prediction scores (probabilities for real class)
+    """
+    model.eval()
+    y_true_list = []
+    y_pred_list = []
+    y_scores_list = []
+    
+    with tqdm(total=len(data_loader), desc="Collecting predictions", unit="batch") as pbar:
+        for batch_x, batch_info in data_loader:
+            batch_x = batch_x.to(device, non_blocking=True)
+            
+            # Handle different data formats
+            if isinstance(batch_info, torch.Tensor):
+                # Training format: batch_info is labels
+                batch_y = batch_info.cpu().numpy()
+            else:
+                # Eval format: batch_info is file IDs, extract labels from paths
+                batch_y = np.array([1 if "/real/" in str(fn) else 0 for fn in batch_info])
+            
+            with torch.inference_mode():
+                _, batch_out = model(batch_x)
+                # Get probabilities using softmax
+                batch_probs = torch.softmax(batch_out, dim=1)
+                batch_scores = batch_probs[:, 1].cpu().numpy()  # Probability of real class
+                batch_pred = torch.argmax(batch_out, dim=1).cpu().numpy()
+            
+            y_true_list.extend(batch_y)
+            y_pred_list.extend(batch_pred)
+            y_scores_list.extend(batch_scores)
+            pbar.update(1)
+    
+    return np.array(y_true_list), np.array(y_pred_list), np.array(y_scores_list)
 
 
 def train_epoch(
