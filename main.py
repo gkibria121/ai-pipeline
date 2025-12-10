@@ -24,10 +24,11 @@ from tqdm import tqdm
 from torchcontrib.optim import SWA
 
 from data_utils import (Dataset_ASVspoof2019_train,
-                        Dataset_ASVspoof2019_devNeval, genSpoof_list)
+                        Dataset_ASVspoof2019_devNeval, genSpoof_list, FEATURE_TYPES)
 from evaluation import calculate_tDCF_EER
 from metrics import MetricsTracker, save_all_metrics
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
+from feature_analysis import analyze_and_visualize_features
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -92,10 +93,12 @@ def main(args: argparse.Namespace) -> None:
             track, prefix_2019))
 
     # define model related paths
-    model_tag = "{}_{}_ep{}_bs{}".format(
+    feature_type = config.get("feature_type", 0)
+    feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
+    model_tag = "{}_{}_ep{}_bs{}_feat{}".format(
         track,
         os.path.splitext(os.path.basename(args.config))[0],
-        config["num_epochs"], config["batch_size"])
+        config["num_epochs"], config["batch_size"], feature_type)
     if args.comment:
         model_tag = model_tag + "_{}".format(args.comment)
     model_tag = output_dir / model_tag
@@ -104,6 +107,33 @@ def main(args: argparse.Namespace) -> None:
     writer = SummaryWriter(model_tag)
     os.makedirs(model_save_path, exist_ok=True)
     copy(args.config, model_tag / "config.conf")
+    
+    # Generate feature analysis visualization
+    print(f"\n{'='*50}")
+    print(f"Feature Type: {feature_type} ({feature_name.upper()})")
+    print(f"Generating feature analysis visualization...")
+    print(f"{'='*50}")
+    try:
+        # Get a sample audio file for visualization
+        sample_audio = None
+        trn_database_path = database_path / "ASVspoof2019_{}_train/flac".format(track)
+        if trn_database_path.exists():
+            audio_files = list(trn_database_path.glob("*.flac"))
+            if audio_files:
+                sample_audio = str(audio_files[0])
+        
+        if sample_audio:
+            feature_viz_dir = model_tag / "feature_analysis"
+            analyze_and_visualize_features(
+                audio_file=sample_audio,
+                feature_type=feature_type,
+                save_dir=feature_viz_dir,
+                sr=16000
+            )
+        else:
+            print("⚠️  No sample audio found for feature visualization")
+    except Exception as e:
+        print(f"⚠️  Could not generate feature analysis: {e}")
 
     # set device
     device = "cuda" if torch.cuda.is_available() else "cpu"
