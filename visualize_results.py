@@ -162,7 +162,7 @@ def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = "", 
         plt.close()
 
 
-def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = ""):
+def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
     """Create comprehensive 4-panel metrics plot."""
     epochs = metrics['epochs']
     train_loss = metrics['train_loss']
