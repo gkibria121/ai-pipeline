@@ -595,7 +595,7 @@ if __name__ == "__main__":
     parser.add_argument("--feature_type",
                         type=int,
                         default=None,
-                        choices=[0, 1, 2, 3],
+                        choices=[0, 1, 2, 3, 4],
                         help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt (default: None, uses config value)")
     parser.add_argument("--random_noise",
                         action="store_true",
