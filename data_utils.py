@@ -190,7 +190,6 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
         # ==========================
         # Linear Frequency Cepstral Coefficients (LFCC)
         # ==========================
-        import numpy as np
         from scipy.fftpack import dct
 
         # 1. STFT → power spectrum
