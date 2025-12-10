@@ -361,30 +361,6 @@ class Dataset_ASVspoof2019_train(Dataset):
         
         y = self.labels[key]
         return x_inp, y
-        
-        # Apply padding based on feature type
-        if self.feature_type == 0:
-            # For raw waveform, use the original padding
-            X_pad = pad_random(X_feat, self.cut)
-            x_inp = Tensor(X_pad)
-        else:
-            # For time-frequency features, pad time dimension
-            # Shape is (n_features, time_steps)
-            time_steps = X_feat.shape[1]
-            target_steps = int(self.cut / 160) + 1  # hop_length=160
-            
-            if time_steps >= target_steps:
-                stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
-                X_pad = X_feat[:, stt:stt + target_steps]
-            else:
-                # Pad if too short
-                num_repeats = int(target_steps / time_steps) + 1
-                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
-            
-            x_inp = Tensor(X_pad)
-        
-        y = self.labels[key]
-        return x_inp, y
 
 
 class Dataset_ASVspoof2019_devNeval(Dataset):

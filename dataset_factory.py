@@ -110,7 +110,8 @@ class Dataset_FakeOrReal_train(Dataset):
             target_steps = int(self.cut / 160) + 1
             
             if time_steps >= target_steps:
-                stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
+                # Use CENTER cropping for deterministic evaluation (not random!)
+                stt = (time_steps - target_steps) // 2
                 X_pad = X_feat[:, stt:stt + target_steps]
             else:
                 num_repeats = int(target_steps / time_steps) + 1
@@ -152,7 +153,7 @@ class Dataset_FakeOrReal_devNeval(Dataset):
         # Extract features
         X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
         
-        # Apply padding
+        # Apply padding - use deterministic center cropping for evaluation
         if self.feature_type == 0:
             X_pad = pad(X_feat, self.cut)
             x_inp = Tensor(X_pad)
@@ -161,7 +162,8 @@ class Dataset_FakeOrReal_devNeval(Dataset):
             target_steps = int(self.cut / 160) + 1
             
             if time_steps >= target_steps:
-                stt = 0  # Deterministic for evaluation
+                # Use CENTER cropping for deterministic evaluation (not random!)
+                stt = (time_steps - target_steps) // 2
                 X_pad = X_feat[:, stt:stt + target_steps]
             else:
                 num_repeats = int(target_steps / time_steps) + 1
