@@ -621,6 +621,7 @@ def train_epoch(
                 batch_loss.backward()
                 optim.step()
 
+            # Scheduler step should be after optimizer step
             if config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
                 scheduler.step()
             elif scheduler is None:
