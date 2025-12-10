@@ -115,11 +115,13 @@ def _get_scheduler(optimizer, optim_config):
                 step,
                 total_steps,
                 1,  # since lr_lambda computes multiplicative factor
-                optim_config['lr_min'] / optim_config['base_lr']))
+                optim_config['lr_min'] / optim_config['base_lr']),
+            last_epoch=0)
 
     elif optim_config['scheduler'] == 'keras_decay':
         scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda step: keras_decay(step))
+            optimizer, lr_lambda=lambda step: keras_decay(step),
+            last_epoch=0)
     else:
         scheduler = None
     return scheduler
