@@ -6,3 +6,6 @@ tqdm
 librosa
 kagglehub
 matplotlib
+tensorboard
+seaborn
+pandas

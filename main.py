@@ -357,6 +357,7 @@ def main(args: argparse.Namespace) -> None:
 
     best_dev_eer = 1.
     best_eval_eer = 100.
+    best_eval_acc = 0.0
     best_dev_tdcf = 0.05
     best_eval_tdcf = 1.
     n_swa_update = 0  # number of snapshots of model to use in SWA
@@ -932,7 +933,7 @@ if __name__ == "__main__":
                         help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt (default: None, uses config value)")
     parser.add_argument("--random_noise",
                         action="store_true",
-                        help="enable random data augmentation (gaussian noise, background noise, reverberation, pitch shift)")
+                        help="enable random data augmentation (composed: noise, reverb, pitch shift, time stretch, gain, filters + SpecAugment for spectrograms)")
     parser.add_argument("--data_subset",
                         type=float,
                         default=1.0,

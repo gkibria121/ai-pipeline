@@ -11,7 +11,8 @@ import soundfile as sf
 from torch import Tensor
 from torch.utils.data import Dataset
 
-from data_utils import extract_feature, apply_augmentation, pad, pad_random
+from data_utils import (extract_feature, apply_augmentation, pad, pad_random,
+                        apply_composed_augmentation, apply_spectrogram_augmentation)
 
 
 # Dataset type mappings
@@ -109,13 +110,24 @@ class Dataset_FakeOrReal_train(Dataset):
         audio_path = self.base_dir / key
         X, sr = sf.read(str(audio_path))
         
-        # Apply random augmentation if enabled
+        # Apply random augmentation if enabled (composed augmentation for better generalization)
         if self.random_noise:
-            aug_type = np.random.randint(0, 5)
-            X = apply_augmentation(X, aug_type, sr)
+            # Use composed augmentation for stronger regularization
+            # Apply 1-2 augmentations with 80% probability
+            X = apply_composed_augmentation(X, sr=sr, num_augmentations=2, augment_prob=0.8)
         
         # Extract features
         X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+        
+        # Apply SpecAugment for spectrogram features during training with augmentation
+        if self.random_noise and self.feature_type > 0:
+            X_feat = apply_spectrogram_augmentation(
+                X_feat, 
+                freq_mask_prob=0.5, 
+                time_mask_prob=0.5,
+                max_freq_mask=20,
+                max_time_mask=50
+            )
         
         # Apply padding based on feature type
         if self.feature_type == 0:
@@ -127,8 +139,8 @@ class Dataset_FakeOrReal_train(Dataset):
             target_steps = int(self.cut / 160) + 1
             
             if time_steps >= target_steps:
-                # Use CENTER cropping for deterministic evaluation (not random!)
-                stt = (time_steps - target_steps) // 2
+                # Random crop during training for more variety
+                stt = np.random.randint(0, time_steps - target_steps + 1)
                 X_pad = X_feat[:, stt:stt + target_steps]
             else:
                 num_repeats = int(target_steps / time_steps) + 1

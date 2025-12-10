@@ -121,6 +121,98 @@ def add_pitch_shift(waveform: np.ndarray, semitones: float = 2.0, sr: int = 1600
         return waveform
 
 
+def add_time_stretch(waveform: np.ndarray, rate: float = 1.0, sr: int = 16000) -> np.ndarray:
+    """
+    Apply time stretching using librosa.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        rate: Stretch factor (>1 = faster, <1 = slower)
+        sr: Sample rate
+    
+    Returns:
+        Time-stretched waveform
+    """
+    if not LIBROSA_AVAILABLE:
+        return waveform
+    
+    try:
+        stretched = librosa.effects.time_stretch(waveform, rate=rate)
+        return stretched
+    except Exception:
+        return waveform
+
+
+def add_gain(waveform: np.ndarray, gain_db: float = 0.0) -> np.ndarray:
+    """
+    Apply gain (volume change) to waveform.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        gain_db: Gain in decibels (positive = louder, negative = quieter)
+    
+    Returns:
+        Gain-adjusted waveform
+    """
+    gain_linear = 10 ** (gain_db / 20)
+    gained = waveform * gain_linear
+    
+    # Clip to prevent distortion
+    max_val = np.max(np.abs(gained))
+    if max_val > 1.0:
+        gained = gained / max_val
+    
+    return gained
+
+
+def add_low_pass_filter(waveform: np.ndarray, cutoff_freq: float = 4000, sr: int = 16000) -> np.ndarray:
+    """
+    Apply low-pass filter to simulate phone/low quality audio.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        cutoff_freq: Cutoff frequency in Hz
+        sr: Sample rate
+    
+    Returns:
+        Filtered waveform
+    """
+    try:
+        from scipy.signal import butter, filtfilt
+        
+        nyquist = sr / 2
+        normalized_cutoff = cutoff_freq / nyquist
+        b, a = butter(4, normalized_cutoff, btype='low')
+        filtered = filtfilt(b, a, waveform)
+        return filtered
+    except Exception:
+        return waveform
+
+
+def add_high_pass_filter(waveform: np.ndarray, cutoff_freq: float = 100, sr: int = 16000) -> np.ndarray:
+    """
+    Apply high-pass filter to remove low frequency noise.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        cutoff_freq: Cutoff frequency in Hz
+        sr: Sample rate
+    
+    Returns:
+        Filtered waveform
+    """
+    try:
+        from scipy.signal import butter, filtfilt
+        
+        nyquist = sr / 2
+        normalized_cutoff = cutoff_freq / nyquist
+        b, a = butter(4, normalized_cutoff, btype='high')
+        filtered = filtfilt(b, a, waveform)
+        return filtered
+    except Exception:
+        return waveform
+
+
 def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int = 16000) -> np.ndarray:
     """
     Apply various augmentations to waveform.
@@ -128,7 +220,8 @@ def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int
     Args:
         waveform: Audio waveform as numpy array
         augmentation_type: 0=no_aug, 1=gaussian_noise, 2=background_noise, 
-                          3=reverberation, 4=pitch_shift
+                          3=reverberation, 4=pitch_shift, 5=time_stretch,
+                          6=gain, 7=low_pass, 8=high_pass
         sr: Sample rate
     
     Returns:
@@ -137,21 +230,111 @@ def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int
     if augmentation_type == 0:
         return waveform
     elif augmentation_type == 1:
-        # Gaussian noise with random SNR (15-30 dB)
-        snr = np.random.uniform(15, 30)
+        # Gaussian noise with random SNR (10-25 dB) - more aggressive
+        snr = np.random.uniform(10, 25)
         return add_random_noise(waveform, snr_db=snr)
     elif augmentation_type == 2:
-        # Background noise with random factor (0.005-0.02)
-        factor = np.random.uniform(0.005, 0.02)
+        # Background noise with random factor (0.01-0.05) - more aggressive
+        factor = np.random.uniform(0.01, 0.05)
         return add_background_noise(waveform, noise_factor=factor)
     elif augmentation_type == 3:
-        # Reverberation with random factor (0.3-0.7)
-        factor = np.random.uniform(0.3, 0.7)
+        # Reverberation with random factor (0.3-0.8)
+        factor = np.random.uniform(0.3, 0.8)
         return add_reverberation(waveform, reverb_factor=factor)
     elif augmentation_type == 4:
-        # Pitch shift with random semitones (-2 to +2)
-        semitones = np.random.uniform(-2, 2)
+        # Pitch shift with random semitones (-4 to +4) - wider range
+        semitones = np.random.uniform(-4, 4)
         return add_pitch_shift(waveform, semitones=semitones, sr=sr)
+    elif augmentation_type == 5:
+        # Time stretch (0.85 to 1.15)
+        rate = np.random.uniform(0.85, 1.15)
+        return add_time_stretch(waveform, rate=rate, sr=sr)
+    elif augmentation_type == 6:
+        # Gain adjustment (-6 to +6 dB)
+        gain_db = np.random.uniform(-6, 6)
+        return add_gain(waveform, gain_db=gain_db)
+    elif augmentation_type == 7:
+        # Low-pass filter (2000-6000 Hz)
+        cutoff = np.random.uniform(2000, 6000)
+        return add_low_pass_filter(waveform, cutoff_freq=cutoff, sr=sr)
+    elif augmentation_type == 8:
+        # High-pass filter (50-300 Hz)
+        cutoff = np.random.uniform(50, 300)
+        return add_high_pass_filter(waveform, cutoff_freq=cutoff, sr=sr)
+    else:
+        return waveform
+
+
+def apply_composed_augmentation(waveform: np.ndarray, sr: int = 16000, 
+                                 num_augmentations: int = 2, 
+                                 augment_prob: float = 0.8) -> np.ndarray:
+    """
+    Apply multiple random augmentations in sequence for stronger regularization.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        sr: Sample rate
+        num_augmentations: Number of augmentations to apply (1-3)
+        augment_prob: Probability of applying any augmentation
+    
+    Returns:
+        Augmented waveform
+    """
+    # Skip augmentation with (1 - augment_prob) probability
+    if np.random.random() > augment_prob:
+        return waveform
+    
+    # Available augmentation types (excluding 0=no_aug)
+    aug_types = [1, 2, 3, 4, 5, 6, 7, 8]
+    
+    # Randomly select how many augmentations to apply (1 to num_augmentations)
+    n_augs = np.random.randint(1, num_augmentations + 1)
+    
+    # Randomly select which augmentations to apply (without replacement)
+    selected_augs = np.random.choice(aug_types, size=min(n_augs, len(aug_types)), replace=False)
+    
+    # Apply augmentations sequentially
+    augmented = waveform.copy()
+    for aug_type in selected_augs:
+        augmented = apply_augmentation(augmented, augmentation_type=aug_type, sr=sr)
+    
+    return augmented
+
+
+def apply_spectrogram_augmentation(spectrogram: np.ndarray, 
+                                    freq_mask_prob: float = 0.5,
+                                    time_mask_prob: float = 0.5,
+                                    max_freq_mask: int = 20,
+                                    max_time_mask: int = 50) -> np.ndarray:
+    """
+    Apply SpecAugment-style augmentation to spectrograms.
+    
+    Args:
+        spectrogram: 2D spectrogram array (freq x time)
+        freq_mask_prob: Probability of applying frequency masking
+        time_mask_prob: Probability of applying time masking
+        max_freq_mask: Maximum frequency bins to mask
+        max_time_mask: Maximum time steps to mask
+    
+    Returns:
+        Augmented spectrogram
+    """
+    spec = spectrogram.copy()
+    n_freq, n_time = spec.shape
+    
+    # Frequency masking (mask random frequency bands)
+    if np.random.random() < freq_mask_prob:
+        f = np.random.randint(1, min(max_freq_mask, n_freq // 4) + 1)
+        f0 = np.random.randint(0, n_freq - f)
+        spec[f0:f0 + f, :] = spec.mean()  # Use mean instead of 0 for stability
+    
+    # Time masking (mask random time segments)
+    if np.random.random() < time_mask_prob:
+        t = np.random.randint(1, min(max_time_mask, n_time // 4) + 1)
+        t0 = np.random.randint(0, n_time - t)
+        spec[:, t0:t0 + t] = spec.mean()
+    
+    return spec
     else:
         return waveform
 
@@ -331,12 +514,22 @@ class Dataset_ASVspoof2019_train(Dataset):
         
         # Apply random augmentation if enabled (only for training)
         if self.random_noise:
-            # Randomly select augmentation type or no augmentation
-            aug_type = np.random.randint(0, 5)  # 0-4: no_aug, gaussian, bg_noise, reverb, pitch_shift
-            X = apply_augmentation(X, augmentation_type=aug_type, sr=sr)
+            # Use composed augmentation for stronger regularization
+            # Apply 1-2 augmentations with 80% probability
+            X = apply_composed_augmentation(X, sr=sr, num_augmentations=2, augment_prob=0.8)
         
         # Extract features
         X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+        
+        # Apply SpecAugment for spectrogram features during training with augmentation
+        if self.random_noise and self.feature_type > 0:
+            X_feat = apply_spectrogram_augmentation(
+                X_feat, 
+                freq_mask_prob=0.5, 
+                time_mask_prob=0.5,
+                max_freq_mask=20,
+                max_time_mask=50
+            )
         
         # Apply padding based on feature type
         if self.feature_type == 0:
