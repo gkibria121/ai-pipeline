@@ -327,8 +327,12 @@ def main(args: argparse.Namespace) -> None:
 
     if eval_eer <= best_eval_eer:
         best_eval_eer = eval_eer
-    if eval_tdcf <= best_eval_tdcf:
+    if eval_tdcf is not None and eval_tdcf <= best_eval_tdcf:
         best_eval_tdcf = eval_tdcf
+        torch.save(model.state_dict(),
+                   model_save_path / "best.pth")
+    elif eval_tdcf is None:
+        # For datasets without t-DCF, save based on best EER
         torch.save(model.state_dict(),
                    model_save_path / "best.pth")
     
@@ -336,8 +340,11 @@ def main(args: argparse.Namespace) -> None:
     save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
                      metric_path, config)
     
-    print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}".format(
-        best_eval_eer, best_eval_tdcf))
+    if best_eval_tdcf is not None:
+        print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}".format(
+            best_eval_eer, best_eval_tdcf))
+    else:
+        print("Exp FIN. EER: {:.3f}".format(best_eval_eer))
 
 
 def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_file):
