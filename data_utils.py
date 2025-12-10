@@ -192,25 +192,44 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
         # ==========================
         from scipy.fftpack import dct
 
-        # 1. STFT → power spectrum
-        S = np.abs(librosa.stft(y=waveform, n_fft=512, hop_length=160)) ** 2
+        n_fft = 512
+        hop_length = 160
+        n_filters = 20
+        n_lfcc = 13
 
-        # 2. Linear filterbank
-        # librosa already supports linear filters
-        fb = librosa.filters.linear(
-            sr=sr,
-            n_fft=512,
-            n_filters=20  # typical LFCC config
-        )
+        # 1. STFT → power spectrum
+        S = np.abs(librosa.stft(y=waveform, n_fft=n_fft, hop_length=hop_length)) ** 2
+
+        # 2. Create linear filterbank manually
+        # Linear filterbank with evenly spaced filters in Hz
+        freq_bins = n_fft // 2 + 1
+        fft_freqs = np.linspace(0, sr / 2, freq_bins)
+        
+        # Create triangular filters with linear spacing
+        filter_freqs = np.linspace(0, sr / 2, n_filters + 2)
+        filterbank = np.zeros((n_filters, freq_bins))
+        
+        for i in range(n_filters):
+            # Left, center, right frequencies for triangular filter
+            left = filter_freqs[i]
+            center = filter_freqs[i + 1]
+            right = filter_freqs[i + 2]
+            
+            # Create triangular filter
+            for j, freq in enumerate(fft_freqs):
+                if left <= freq <= center:
+                    filterbank[i, j] = (freq - left) / (center - left)
+                elif center <= freq <= right:
+                    filterbank[i, j] = (right - freq) / (right - center)
 
         # 3. Apply filterbank
-        S_lin = np.dot(fb, S)
+        S_lin = np.dot(filterbank, S)
 
-        # 4. Log
-        log_S = np.log(S_lin + 1e-6)
+        # 4. Log (with small epsilon to avoid log(0))
+        log_S = np.log(S_lin + 1e-10)
 
         # 5. DCT → LFCC (first 13 coefficients)
-        lfcc = dct(log_S, type=2, axis=0, norm='ortho')[:13]
+        lfcc = dct(log_S, type=2, axis=0, norm='ortho')[:n_lfcc]
 
         return lfcc
     
