@@ -500,7 +500,16 @@ def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_f
 def get_model(model_config: Dict, device: torch.device):
     """Define DNN model architecture"""
     module = import_module("models.{}".format(model_config["architecture"]))
-    _model = getattr(module, "Model")
+    
+    # Check for model variant (e.g., "attention" for EfficientNetB2, "large" for LCNN)
+    model_variant = model_config.get("model_variant", None)
+    if model_variant == "attention":
+        _model = getattr(module, "ModelWithAttention")
+    elif model_variant == "large":
+        _model = getattr(module, "ModelLarge")
+    else:
+        _model = getattr(module, "Model")
+    
     model = _model(model_config).to(device)
     nb_params = sum([param.view(-1).size()[0] for param in model.parameters()])
     print("no. model params:{}".format(nb_params))
