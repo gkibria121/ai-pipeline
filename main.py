@@ -316,7 +316,10 @@ def main(args: argparse.Namespace) -> None:
         model_tag / "final_evaluation_results.txt")
     f_log = open(model_tag / "metric_log.txt", "a")
     f_log.write("=" * 5 + "\n")
-    f_log.write("EER: {:.3f}, min t-DCF: {:.5f}".format(eval_eer, eval_tdcf))
+    if eval_tdcf is not None:
+        f_log.write("EER: {:.3f}, min t-DCF: {:.5f}, Accuracy: {:.2f}%".format(eval_eer, eval_tdcf, eval_acc))
+    else:
+        f_log.write("EER: {:.3f}, Accuracy: {:.2f}%".format(eval_eer, eval_acc))
     f_log.close()
 
     torch.save(model.state_dict(),
