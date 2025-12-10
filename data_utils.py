@@ -183,16 +183,36 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
         mel_spec = librosa.feature.melspectrogram(
             y=waveform, sr=sr, n_mels=128, n_fft=512, hop_length=160
         )
-        # Convert to dB scale
         mel_spec_db = librosa.power_to_db(mel_spec, ref=np.max)
         return mel_spec_db
     
     elif feature_type == 2:
+        # ==========================
         # Linear Frequency Cepstral Coefficients (LFCC)
-        lfcc = librosa.feature.mfcc(
-            y=waveform, sr=sr, n_mfcc=13, n_fft=512, hop_length=160,
-            lifter=0  # Use 0 for LFCC (no liftering)
+        # ==========================
+        import numpy as np
+        from scipy.fftpack import dct
+
+        # 1. STFT → power spectrum
+        S = np.abs(librosa.stft(y=waveform, n_fft=512, hop_length=160)) ** 2
+
+        # 2. Linear filterbank
+        # librosa already supports linear filters
+        fb = librosa.filters.linear(
+            sr=sr,
+            n_fft=512,
+            n_filters=20  # typical LFCC config
         )
+
+        # 3. Apply filterbank
+        S_lin = np.dot(fb, S)
+
+        # 4. Log
+        log_S = np.log(S_lin + 1e-6)
+
+        # 5. DCT → LFCC (first 13 coefficients)
+        lfcc = dct(log_S, type=2, axis=0, norm='ortho')[:13]
+
         return lfcc
     
     elif feature_type == 3:
@@ -203,13 +223,10 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
         return mfcc
     
     elif feature_type == 4:
-        # Constant-Q Transform (CQT) - Best for fake vs real audio detection
-        # CQT provides better frequency resolution at lower frequencies
-        # where many deepfake artifacts appear
+        # Constant-Q Transform (CQT)
         cqt = librosa.cqt(
             y=waveform, sr=sr, hop_length=512, n_bins=84, bins_per_octave=12
         )
-        # Convert to dB scale and take magnitude
         cqt_db = librosa.amplitude_to_db(np.abs(cqt), ref=np.max)
         return cqt_db
     
@@ -218,6 +235,7 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
             f"Unknown feature_type: {feature_type}. "
             f"Must be one of {list(FEATURE_TYPES.keys())}"
         )
+
 
 
 def genSpoof_list(dir_meta, is_train=False, is_eval=False):

@@ -63,8 +63,9 @@ def main(args: argparse.Namespace) -> None:
     print("="*70)
     
     optim_config["epochs"] = config["num_epochs"]
-    track = config.get("track", dataset_info.get("track", "LA"))
-    assert track in ["LA", "PA", "DF"], "Invalid track given"
+    track = config.get("track", dataset_info.get("track", None))
+    if track is not None:
+        assert track in ["LA", "PA", "DF"], "Invalid track given"
     if "eval_all_best" not in config:
         config["eval_all_best"] = "True"
     if "freq_aug" not in config:
