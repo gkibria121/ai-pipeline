@@ -177,8 +177,12 @@ def main(args: argparse.Namespace) -> None:
             torch.load(config["model_path"], map_location=device))
         print("Model loaded : {}".format(config["model_path"]))
         print("Start evaluation...")
-        produce_evaluation_file(eval_loader, model, device,
-                                eval_score_path, eval_trial_path)
+        if dataset_type == 1:
+            produce_evaluation_file(eval_loader, model, device,
+                                    eval_score_path, eval_trial_path)
+        else:
+            produce_evaluation_file_simple(eval_loader, model, device,
+                                          eval_score_path)
         evaluate_model(dataset_type, eval_score_path, database_path, config,
                       model_tag / "evaluation_results.txt")
         print("DONE.")
@@ -217,8 +221,12 @@ def main(args: argparse.Namespace) -> None:
         running_loss = train_epoch(trn_loader, model, optimizer, device,
                                    scheduler, config)
         print("\nValidating on development set...")
-        produce_evaluation_file(dev_loader, model, device,
-                                metric_path/"dev_score.txt", dev_trial_path)
+        if dataset_type == 1:
+            produce_evaluation_file(dev_loader, model, device,
+                                    metric_path/"dev_score.txt", dev_trial_path)
+        else:
+            produce_evaluation_file_simple(dev_loader, model, device,
+                                          metric_path/"dev_score.txt")
         dev_eer, dev_tdcf, dev_acc = evaluate_model(
             dataset_type, metric_path/"dev_score.txt", database_path, config,
             metric_path/"dev_results_{:03d}epo.txt".format(epoch))
@@ -250,8 +258,12 @@ def main(args: argparse.Namespace) -> None:
 
             # do evaluation whenever best model is renewed
             if str_to_bool(config["eval_all_best"]):
-                produce_evaluation_file(eval_loader, model, device,
-                                        eval_score_path, eval_trial_path)
+                if dataset_type == 1:
+                    produce_evaluation_file(eval_loader, model, device,
+                                            eval_score_path, eval_trial_path)
+                else:
+                    produce_evaluation_file_simple(eval_loader, model, device,
+                                                  eval_score_path)
                 eval_eer, eval_tdcf, eval_acc = evaluate_model(
                     dataset_type, eval_score_path, database_path, config,
                     metric_path / "eval_results_{:03d}epo.txt".format(epoch))
@@ -294,8 +306,11 @@ def main(args: argparse.Namespace) -> None:
     if n_swa_update > 0:
         optimizer_swa.swap_swa_sgd()
         optimizer_swa.bn_update(trn_loader, model, device=device)
-    produce_evaluation_file(eval_loader, model, device, eval_score_path,
-                            eval_trial_path)
+    if dataset_type == 1:
+        produce_evaluation_file(eval_loader, model, device, eval_score_path,
+                                eval_trial_path)
+    else:
+        produce_evaluation_file_simple(eval_loader, model, device, eval_score_path)
     eval_eer, eval_tdcf, eval_acc = evaluate_model(
         dataset_type, eval_score_path, database_path, config,
         model_tag / "final_evaluation_results.txt")
@@ -434,7 +449,7 @@ def produce_evaluation_file(
     device: torch.device,
     save_path: str,
     trial_path: str) -> None:
-    """Perform evaluation and save the score to a file"""
+    """Perform evaluation and save the score to a file (ASVspoof format)"""
     model.eval()
     with open(trial_path, "r") as f_trl:
         trial_lines = f_trl.readlines()
@@ -457,6 +472,35 @@ def produce_evaluation_file(
             _, utt_id, _, src, key = trl.strip().split(' ')
             assert fn == utt_id
             fh.write("{} {} {} {}\n".format(utt_id, src, key, sco))
+    print("Scores saved to {}".format(save_path))
+
+
+def produce_evaluation_file_simple(
+    data_loader: DataLoader,
+    model,
+    device: torch.device,
+    save_path: str) -> None:
+    """Perform evaluation and save the score to a file (simple format without protocols)"""
+    model.eval()
+    fname_list = []
+    score_list = []
+    with tqdm(total=len(data_loader), desc="Evaluation", unit="batch") as pbar:
+        for batch_x, utt_id in data_loader:
+            batch_x = batch_x.to(device)
+            with torch.no_grad():
+                _, batch_out = model(batch_x)
+                batch_score = (batch_out[:, 1]).data.cpu().numpy().ravel()
+            # add outputs
+            fname_list.extend(utt_id)
+            score_list.extend(batch_score.tolist())
+            pbar.update(1)
+
+    # Determine labels from file paths (real=1, fake=0)
+    with open(save_path, "w") as fh:
+        for fn, sco in zip(fname_list, score_list):
+            # Extract label from path: real folder = bonafide, fake folder = spoof
+            label = "bonafide" if "/real/" in fn else "spoof"
+            fh.write("{} {} {}\n".format(fn, label, sco))
     print("Scores saved to {}".format(save_path))
 
 
