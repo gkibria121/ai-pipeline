@@ -303,13 +303,13 @@ def main(args: argparse.Namespace) -> None:
         print("Memory Format: channels_last (optimized for CNNs)")
     
     # Enable torch.compile for PyTorch 2.0+ (30-50% speedup with inductor)
-    # Disable on older GPUs where it can cause compatibility issues
-    use_compile = config.get("use_compile", True)  # Enable by default for PyTorch 2.x
+    # Disable on older GPUs where it causes long compilation times and compatibility issues
+    use_compile = config.get("use_compile", True)
     if not BF16_NATIVE_SUPPORTED:
-        # torch.compile has issues with FP16 + channels_last on older GPUs
-        use_compile = config.get("use_compile", False)  # Default to False on older GPUs
+        # torch.compile is very slow on T4/V100 and can hang - disable it
         if use_compile:
-            print("⚠️  torch.compile may have issues on this GPU, consider setting use_compile: false in config")
+            print("⚠️  Disabling torch.compile on this GPU (T4/V100 have slow compilation)")
+        use_compile = False  # Force disable on older GPUs
     
     if hasattr(torch, 'compile') and use_compile:
         compile_mode = config.get("compile_mode", "reduce-overhead")  # Options: default, reduce-overhead, max-autotune
