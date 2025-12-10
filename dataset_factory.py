@@ -270,7 +270,8 @@ def load_fake_or_real_data(base_path: Path) -> Tuple[Dict, List, Dict, List, Lis
 
 
 def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int, 
-                           random_noise: bool, batch_size: int, seed: int):
+                           random_noise: bool, batch_size: int, seed: int,
+                           data_subset: float = 1.0):
     """
     Create appropriate dataset loaders based on dataset type.
     
@@ -281,6 +282,7 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
         random_noise: Whether to apply augmentation
         batch_size: Batch size for dataloaders
         seed: Random seed
+        data_subset: Fraction of data to use from each split (0.0-1.0)
         
     Returns:
         train_loader, dev_loader, eval_loader
@@ -291,6 +293,31 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
     
     if dataset_type == 2:  # Fake-or-Real
         train_labels, train_files, dev_labels, dev_files, eval_files = load_fake_or_real_data(base_path)
+        
+        # Apply data subset sampling if requested
+        if data_subset < 1.0:
+            import random
+            random.seed(seed)
+            
+            # Sample train files
+            n_train = max(1, int(len(train_files) * data_subset))
+            sampled_train_files = random.sample(train_files, n_train)
+            train_files = sampled_train_files
+            
+            # Sample dev files
+            n_dev = max(1, int(len(dev_files) * data_subset))
+            sampled_dev_files = random.sample(dev_files, n_dev)
+            dev_files = sampled_dev_files
+            
+            # Sample eval files
+            n_eval = max(1, int(len(eval_files) * data_subset))
+            sampled_eval_files = random.sample(eval_files, n_eval)
+            eval_files = sampled_eval_files
+            
+            print(f"\n📊 Using {data_subset*100:.1f}% data subset:")
+            print(f"  Training: {len(train_files)} samples")
+            print(f"  Validation: {len(dev_files)} samples")
+            print(f"  Testing: {len(eval_files)} samples\n")
         
         train_set = Dataset_FakeOrReal_train(
             list_IDs=train_files,

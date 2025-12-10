@@ -208,7 +208,8 @@ def main(args: argparse.Namespace) -> None:
     else:
         trn_loader, dev_loader, eval_loader = create_dataset_loaders(
             dataset_type, database_path, feature_type, 
-            config.get("random_noise", False), config["batch_size"], args.seed)
+            config.get("random_noise", False), config["batch_size"], args.seed,
+            data_subset=args.data_subset)
 
     # evaluates pretrained model and exit script
     if args.eval:
@@ -677,6 +678,10 @@ if __name__ == "__main__":
     parser.add_argument("--random_noise",
                         action="store_true",
                         help="enable random data augmentation (gaussian noise, background noise, reverberation, pitch shift)")
+    parser.add_argument("--data_subset",
+                        type=float,
+                        default=1.0,
+                        help="percentage of data to use from each split (0.0-1.0, default: 1.0 for full dataset)")
     parser.add_argument(
         "--eval",
         action="store_true",
