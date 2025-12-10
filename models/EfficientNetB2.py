@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
+from torchvision.models import EfficientNet_B2_Weights
 
 
 class Model(nn.Module):
@@ -29,7 +30,8 @@ class Model(nn.Module):
         freeze_backbone = d_args.get("freeze_backbone", False)
         
         # Load pre-trained EfficientNet-B2
-        self.backbone = models.efficientnet_b2(pretrained=pretrained)
+        weights = EfficientNet_B2_Weights.DEFAULT if pretrained else None
+        self.backbone = models.efficientnet_b2(weights=weights)
         
         # Modify first conv layer to accept single channel input (mel-spectrogram)
         # Original: Conv2d(3, 32, kernel_size=3, stride=2, padding=1)
@@ -130,7 +132,8 @@ class ModelWithAttention(nn.Module):
         att_bottleneck = d_args.get("att_bottleneck", 128)
         
         # Load pre-trained EfficientNet-B2
-        self.backbone = models.efficientnet_b2(pretrained=pretrained)
+        weights = EfficientNet_B2_Weights.DEFAULT if pretrained else None
+        self.backbone = models.efficientnet_b2(weights=weights)
         
         # Modify first conv layer to accept single channel input
         original_first_conv = self.backbone.features[0][0]
