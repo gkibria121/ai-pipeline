@@ -16,9 +16,22 @@ from typing import List, Dict, Optional
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
 import seaborn as sns
 from glob import glob
+
+# Detect if running in notebook
+try:
+    get_ipython()
+    IN_NOTEBOOK = True
+    # Use inline backend for notebooks
+    try:
+        get_ipython().run_line_magic('matplotlib', 'inline')
+    except:
+        pass
+except NameError:
+    IN_NOTEBOOK = False
+    # Use Agg backend for scripts (non-interactive)
+    matplotlib.use('Agg')
 
 # Set style
 plt.style.use('seaborn-v0_8-darkgrid')
@@ -42,7 +55,7 @@ def load_metrics(metrics_path: Path) -> Optional[Dict]:
         return None
 
 
-def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = ""):
+def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
     """Plot training loss and dev EER curves."""
     epochs = metrics['epochs']
     train_loss = metrics['train_loss']
@@ -73,12 +86,16 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     ax.legend()
     
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved training curves to {save_path}")
-    plt.close()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved training curves to {save_path}")
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = ""):
+def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
     """Plot accuracy curves for dev and eval sets."""
     epochs = metrics['epochs']
     dev_acc = metrics.get('dev_acc', [])
@@ -104,12 +121,16 @@ def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     plt.legend(fontsize=11)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved accuracy curves to {save_path}")
-    plt.close()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved accuracy curves to {save_path}")
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = ""):
+def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
     """Plot dev vs eval EER comparison."""
     epochs = metrics['epochs']
     dev_eer = metrics['dev_eer']
@@ -132,9 +153,13 @@ def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = ""):
     plt.legend(fontsize=11)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved EER comparison to {save_path}")
-    plt.close()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved EER comparison to {save_path}")
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
 
 
 def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = ""):
@@ -195,12 +220,16 @@ def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = ""):
     ax.legend()
     
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved comprehensive metrics to {save_path}")
-    plt.close()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved comprehensive metrics to {save_path}")
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
 
 
-def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path):
+def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path, show: bool = False):
     """Compare multiple training runs."""
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     fig.suptitle('Model Comparison', fontsize=16, fontweight='bold')
@@ -283,9 +312,13 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Saved comparison plot to {save_path}")
-    plt.close()
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        print(f"✓ Saved comparison plot to {save_path}")
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
 
 
 def print_summary(metrics: Dict, model_name: str = "Model"):
@@ -362,6 +395,12 @@ Examples:
         help='Print summary statistics'
     )
     
+    parser.add_argument(
+        '--show',
+        action='store_true',
+        help='Display plots interactively instead of/in addition to saving'
+    )
+    
     args = parser.parse_args()
     
     # Find all matching paths
@@ -408,10 +447,11 @@ Examples:
         
         print(f"📈 Generating visualizations for: {model_name}")
         
-        plot_training_curves(metrics, output_dir / "training_curves.png", f" - {model_name}")
-        plot_accuracy_curves(metrics, output_dir / "accuracy_curves.png", f" - {model_name}")
-        plot_eer_comparison(metrics, output_dir / "eer_comparison.png", f" - {model_name}")
-        plot_all_metrics(metrics, output_dir / "all_metrics.png", f" - {model_name}")
+        save_path = None if args.show and not args.output else output_dir
+        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", args.show)
+        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", args.show)
+        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", args.show)
+        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", args.show)
         
         if args.show_summary:
             print_summary(metrics, model_name)
@@ -420,23 +460,31 @@ Examples:
         # Multiple models
         if args.compare:
             print(f"📊 Generating comparison plots for {len(metrics_list)} models")
-            plot_comparison(metrics_list, labels, output_dir / "model_comparison.png")
+            save_path = None if args.show and not args.output else output_dir / "model_comparison.png"
+            plot_comparison(metrics_list, labels, save_path, args.show)
         
         # Individual plots for each model
         for metrics, label in zip(metrics_list, labels):
             print(f"\n📈 Generating visualizations for: {label}")
             model_output_dir = output_dir / label
-            model_output_dir.mkdir(parents=True, exist_ok=True)
+            if not args.show or args.output:
+                model_output_dir.mkdir(parents=True, exist_ok=True)
             
-            plot_training_curves(metrics, model_output_dir / "training_curves.png", f" - {label}")
-            plot_accuracy_curves(metrics, model_output_dir / "accuracy_curves.png", f" - {label}")
-            plot_eer_comparison(metrics, model_output_dir / "eer_comparison.png", f" - {label}")
-            plot_all_metrics(metrics, model_output_dir / "all_metrics.png", f" - {label}")
+            save_base = None if args.show and not args.output else model_output_dir
+            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", args.show)
+            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", args.show)
+            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", args.show)
+            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", args.show)
             
             if args.show_summary:
                 print_summary(metrics, label)
     
-    print(f"\n✅ All visualizations saved to: {output_dir}")
+    if args.show:
+        print(f"\n✅ All visualizations displayed!")
+        if args.output:
+            print(f"   (Also saved to: {output_dir})")
+    else:
+        print(f"\n✅ All visualizations saved to: {output_dir}")
 
 
 if __name__ == "__main__":
