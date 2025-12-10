@@ -41,6 +41,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*lr_scheduler.step.*optimizer.step.*")
 warnings.filterwarnings("ignore", message=".*Please use the new API settings.*")
 warnings.filterwarnings("ignore", message=".*does not support bfloat16 compilation natively.*")
+warnings.filterwarnings("ignore", message=".*Not enough SMs to use max_autotune_gemm mode.*")
 
 # PyTorch 2.x optimizations - Use new API for TF32 control (PyTorch 2.9+)
 # Track TF32 status for printing later
