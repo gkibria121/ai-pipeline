@@ -22,6 +22,17 @@ DATASET_TYPES = {
 }
 
 
+def get_num_workers():
+    """Determine optimal number of workers based on system capabilities"""
+    try:
+        cpu_count = os.cpu_count() or 1
+        # Use at most 4 workers for training, but cap at cpu_count - 1
+        max_workers = min(4, max(1, cpu_count - 1))
+        return max_workers
+    except:
+        return 2  # Safe default
+
+
 def get_dataset_info(dataset_type: int) -> Dict:
     """
     Get dataset information including paths and structure.
@@ -298,15 +309,18 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
         gen = torch.Generator()
         gen.manual_seed(seed)
         
+        num_workers_train = get_num_workers()
+        num_workers_eval = max(1, num_workers_train // 2)
+        
         train_loader = DataLoader(
             train_set,
             batch_size=batch_size,
             shuffle=True,
             drop_last=True,
             pin_memory=True,
-            num_workers=4,
-            persistent_workers=True,
-            prefetch_factor=2,
+            num_workers=num_workers_train,
+            persistent_workers=True if num_workers_train > 0 else False,
+            prefetch_factor=2 if num_workers_train > 0 else None,
             worker_init_fn=seed_worker,
             generator=gen
         )
@@ -317,8 +331,8 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             shuffle=False,
             drop_last=False,
             pin_memory=True,
-            num_workers=2,
-            persistent_workers=True
+            num_workers=num_workers_eval,
+            persistent_workers=True if num_workers_eval > 0 else False
         )
         
         eval_loader = DataLoader(
@@ -327,8 +341,8 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             shuffle=False,
             drop_last=False,
             pin_memory=True,
-            num_workers=2,
-            persistent_workers=True
+            num_workers=num_workers_eval,
+            persistent_workers=True if num_workers_eval > 0 else False
         )
         
         return train_loader, dev_loader, eval_loader

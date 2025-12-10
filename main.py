@@ -45,6 +45,17 @@ from feature_analysis import analyze_and_visualize_features
 warnings.filterwarnings("ignore", category=FutureWarning)
 
 
+def get_num_workers():
+    """Determine optimal number of workers based on system capabilities"""
+    try:
+        cpu_count = os.cpu_count() or 1
+        # Use at most 4 workers for training, but cap at cpu_count - 1
+        max_workers = min(4, max(1, cpu_count - 1))
+        return max_workers
+    except:
+        return 2  # Safe default
+
+
 def main(args: argparse.Namespace) -> None:
     """
     Main function.
@@ -449,14 +460,18 @@ def get_loader(
                                            random_noise=random_noise)
     gen = torch.Generator()
     gen.manual_seed(seed)
+    
+    num_workers_train = get_num_workers()
+    num_workers_eval = max(1, num_workers_train // 2)
+    
     trn_loader = DataLoader(train_set,
                             batch_size=config["batch_size"],
                             shuffle=True,
                             drop_last=True,
                             pin_memory=True,
-                            num_workers=4,
-                            persistent_workers=True,
-                            prefetch_factor=2,
+                            num_workers=num_workers_train,
+                            persistent_workers=True if num_workers_train > 0 else False,
+                            prefetch_factor=2 if num_workers_train > 0 else None,
                             worker_init_fn=seed_worker,
                             generator=gen)
 
@@ -473,8 +488,8 @@ def get_loader(
                             shuffle=False,
                             drop_last=False,
                             pin_memory=True,
-                            num_workers=2,
-                            persistent_workers=True)
+                            num_workers=num_workers_eval,
+                            persistent_workers=True if num_workers_eval > 0 else False)
 
     file_eval = genSpoof_list(dir_meta=eval_trial_path,
                               is_train=False,
@@ -487,8 +502,8 @@ def get_loader(
                              shuffle=False,
                              drop_last=False,
                              pin_memory=True,
-                             num_workers=2,
-                             persistent_workers=True)
+                             num_workers=num_workers_eval,
+                             persistent_workers=True if num_workers_eval > 0 else False)
 
     return trn_loader, dev_loader, eval_loader
 
