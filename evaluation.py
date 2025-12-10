@@ -123,19 +123,6 @@ def calculate_tDCF_EER(cm_scores_file,
     # Calculate accuracy at EER threshold
     accuracy = compute_accuracy(bona_cm, spoof_cm, cm_threshold)
 
-    attack_types = [f'A{_id:02d}' for _id in range(7, 20)]
-    if printout:
-        spoof_cm_breakdown = {
-            attack_type: cm_scores[cm_sources == attack_type]
-            for attack_type in attack_types
-        }
-
-        eer_cm_breakdown = {
-            attack_type: compute_eer(bona_cm,
-                                     spoof_cm_breakdown[attack_type])[0]
-            for attack_type in attack_types
-        }
-
     [Pfa_asv, Pmiss_asv,
      Pmiss_spoof_asv] = obtain_asv_error_rates(tar_asv, non_asv, spoof_asv,
                                                asv_threshold)
@@ -164,13 +151,6 @@ def calculate_tDCF_EER(cm_scores_file,
 
             f_res.write('\nTANDEM\n')
             f_res.write('\tmin-tDCF\t\t= {:8.9f}\n'.format(min_tDCF))
-
-            f_res.write('\nBREAKDOWN CM SYSTEM\n')
-            for attack_type in attack_types:
-                _eer = eer_cm_breakdown[attack_type] * 100
-                f_res.write(
-                    f'\tEER {attack_type}\t\t= {_eer:8.9f} % (Equal error rate for {attack_type}\n'
-                )
         os.system(f"cat {output_file}")
 
     return eer_cm * 100, min_tDCF, accuracy
