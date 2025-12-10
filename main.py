@@ -36,13 +36,38 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from torchcontrib.optim import SWA
 
-# PyTorch 2.x optimizations
-if hasattr(torch, 'set_float32_matmul_precision'):
-    # Use TensorFloat-32 for faster matmul on Ampere+ GPUs (maintains accuracy)
+# Suppress harmless warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", message=".*lr_scheduler.step.*optimizer.step.*")
+warnings.filterwarnings("ignore", message=".*Please use the new API settings.*")
+warnings.filterwarnings("ignore", message=".*does not support bfloat16 compilation natively.*")
+
+# PyTorch 2.x optimizations - Use new API for TF32 control (PyTorch 2.9+)
+if hasattr(torch.backends.cuda.matmul, 'fp32_precision'):
+    # New PyTorch 2.9+ API
+    torch.backends.cuda.matmul.fp32_precision = 'tf32'  # or 'highest' for max precision
+    torch.backends.cudnn.conv.fp32_precision = 'tf32'
+elif hasattr(torch, 'set_float32_matmul_precision'):
+    # Fallback for PyTorch 2.0-2.8
     torch.set_float32_matmul_precision('high')
 
-# Check for BF16 support (better than FP16 for training stability)
-BF16_SUPPORTED = torch.cuda.is_available() and torch.cuda.is_bf16_supported()
+# Check for BF16 support - requires compute capability 8.0+ (Ampere/Ada/Hopper)
+# T4 (7.5), V100 (7.0) don't have native BF16, only Ampere+ (A100, RTX 30xx, etc.)
+def check_bf16_native_support():
+    """Check if GPU has native BF16 hardware support (not just software emulation)."""
+    if not torch.cuda.is_available():
+        return False
+    try:
+        # Get compute capability - need 8.0+ for native BF16
+        major, minor = torch.cuda.get_device_capability(0)
+        # Ampere (8.0+), Ada (8.9), Hopper (9.0) have native BF16
+        return major >= 8
+    except:
+        return False
+
+BF16_NATIVE_SUPPORTED = check_bf16_native_support()
+# torch.cuda.is_bf16_supported() returns True even for emulated BF16, use our check instead
+BF16_SUPPORTED = BF16_NATIVE_SUPPORTED
 
 from data_utils import (Dataset_ASVspoof2019_train,
                         Dataset_ASVspoof2019_devNeval, genSpoof_list, FEATURE_TYPES)
@@ -52,8 +77,6 @@ from metrics import (MetricsTracker, save_all_metrics, generate_prediction_visua
                     display_final_summary, plot_accuracy_comparison)
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
 from feature_analysis import analyze_and_visualize_features
-
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 
 def get_num_workers():
@@ -247,7 +270,9 @@ def main(args: argparse.Namespace) -> None:
         gpu_name = torch.cuda.get_device_name(0)
         gpu_capability = torch.cuda.get_device_capability(0)
         print(f"GPU: {gpu_name} (Compute Capability: {gpu_capability[0]}.{gpu_capability[1]})")
-        print(f"BF16 Supported: {BF16_SUPPORTED}")
+        print(f"BF16 Native Support: {BF16_NATIVE_SUPPORTED}")
+        if not BF16_NATIVE_SUPPORTED:
+            print(f"  → Using FP16 mixed precision (BF16 requires Ampere+ GPU)")
         print(f"TF32 Enabled: {torch.backends.cuda.matmul.allow_tf32}")
     
     # Enable CuDNN optimizations
@@ -262,13 +287,25 @@ def main(args: argparse.Namespace) -> None:
     
     # Convert model to channels_last memory format for faster CNN operations
     # This provides up to 30% speedup on modern GPUs for CNN models
+    # Note: Can cause issues with torch.compile on older GPUs, so we disable it for non-Ampere GPUs
     use_channels_last = config.get("use_channels_last", True)
-    if use_channels_last and any(isinstance(m, (nn.Conv1d, nn.Conv2d)) for m in model.modules()):
+    if not BF16_NATIVE_SUPPORTED:
+        # On older GPUs (T4, V100), channels_last + torch.compile can cause cuDNN issues
+        use_channels_last = False
+        print("Memory Format: contiguous (channels_last disabled for GPU compatibility)")
+    elif use_channels_last and any(isinstance(m, (nn.Conv1d, nn.Conv2d)) for m in model.modules()):
         model = model.to(memory_format=torch.channels_last)
         print("Memory Format: channels_last (optimized for CNNs)")
     
     # Enable torch.compile for PyTorch 2.0+ (30-50% speedup with inductor)
+    # Disable on older GPUs where it can cause compatibility issues
     use_compile = config.get("use_compile", True)  # Enable by default for PyTorch 2.x
+    if not BF16_NATIVE_SUPPORTED:
+        # torch.compile has issues with FP16 + channels_last on older GPUs
+        use_compile = config.get("use_compile", False)  # Default to False on older GPUs
+        if use_compile:
+            print("⚠️  torch.compile may have issues on this GPU, consider setting use_compile: false in config")
+    
     if hasattr(torch, 'compile') and use_compile:
         compile_mode = config.get("compile_mode", "reduce-overhead")  # Options: default, reduce-overhead, max-autotune
         print(f"Compiling model with torch.compile (mode={compile_mode})...")
@@ -658,8 +695,8 @@ def produce_evaluation_file(
             for batch_x, utt_id in data_loader:
                 batch_x = batch_x.to(device, non_blocking=True)
                 
-                # Apply channels_last if input is 4D
-                if batch_x.dim() == 4:
+                # Apply channels_last if input is 4D and GPU supports it
+                if batch_x.dim() == 4 and BF16_NATIVE_SUPPORTED:
                     batch_x = batch_x.to(memory_format=torch.channels_last)
                 
                 _, batch_out = model(batch_x)
@@ -695,8 +732,8 @@ def produce_evaluation_file_simple(
             for batch_x, utt_id in data_loader:
                 batch_x = batch_x.to(device, non_blocking=True)
                 
-                # Apply channels_last if input is 4D
-                if batch_x.dim() == 4:
+                # Apply channels_last if input is 4D and GPU supports it
+                if batch_x.dim() == 4 and BF16_NATIVE_SUPPORTED:
                     batch_x = batch_x.to(memory_format=torch.channels_last)
                 
                 _, batch_out = model(batch_x)
@@ -736,8 +773,8 @@ def collect_predictions(data_loader: DataLoader, model, device: torch.device):
             for batch_x, batch_info in data_loader:
                 batch_x = batch_x.to(device, non_blocking=True)
                 
-                # Apply channels_last if input is 4D
-                if batch_x.dim() == 4:
+                # Apply channels_last if input is 4D and GPU supports it
+                if batch_x.dim() == 4 and BF16_NATIVE_SUPPORTED:
                     batch_x = batch_x.to(memory_format=torch.channels_last)
                 
                 # Handle different data formats
@@ -775,18 +812,18 @@ def train_epoch(
     ii = 0
     model.train()
 
-    # Determine AMP settings - use BF16 if available (better training stability than FP16)
+    # Determine AMP settings - use BF16 only if GPU has native support
     use_amp = config.get("use_amp", True) and torch.cuda.is_available()
-    use_bf16 = config.get("use_bf16", BF16_SUPPORTED) and BF16_SUPPORTED
+    use_bf16 = config.get("use_bf16", BF16_NATIVE_SUPPORTED) and BF16_NATIVE_SUPPORTED
     
     # Use new unified torch.amp API (PyTorch 2.x)
     amp_dtype = torch.bfloat16 if use_bf16 else torch.float16
     
-    # GradScaler is not needed for BF16 (it has better dynamic range)
+    # GradScaler is needed for FP16 (not for BF16 which has better dynamic range)
     scaler = torch.amp.GradScaler('cuda', enabled=(use_amp and not use_bf16))
     
-    # Check for channels_last format
-    use_channels_last = config.get("use_channels_last", True)
+    # Check for channels_last format - disabled on older GPUs
+    use_channels_last = config.get("use_channels_last", True) and BF16_NATIVE_SUPPORTED
 
     # set objective (Loss) functions
     weight = torch.FloatTensor([0.1, 0.9]).to(device)
@@ -839,13 +876,9 @@ def train_epoch(
                 
                 optim.step()
 
-            # Scheduler step should be after optimizer step
-            if config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
+            # Scheduler step - must be after optimizer.step()
+            if scheduler is not None and config["optim_config"]["scheduler"] in ["cosine", "keras_decay"]:
                 scheduler.step()
-            elif scheduler is None:
-                pass
-            else:
-                raise ValueError("scheduler error, got:{}".format(scheduler))
             
             # Update progress bar with current loss
             current_loss = running_loss / num_total
