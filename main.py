@@ -327,6 +327,7 @@ def main(args: argparse.Namespace) -> None:
 
     if eval_eer <= best_eval_eer:
         best_eval_eer = eval_eer
+        best_eval_acc = eval_acc
     if eval_tdcf is not None and eval_tdcf <= best_eval_tdcf:
         best_eval_tdcf = eval_tdcf
         torch.save(model.state_dict(),
@@ -341,10 +342,10 @@ def main(args: argparse.Namespace) -> None:
                      metric_path, config)
     
     if best_eval_tdcf is not None:
-        print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}".format(
-            best_eval_eer, best_eval_tdcf))
+        print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}, Accuracy: {:.2f}%".format(
+            best_eval_eer, best_eval_tdcf, best_eval_acc))
     else:
-        print("Exp FIN. EER: {:.3f}".format(best_eval_eer))
+        print("Exp FIN. EER: {:.3f}, Accuracy: {:.2f}%".format(best_eval_eer, best_eval_acc))
 
 
 def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_file):
