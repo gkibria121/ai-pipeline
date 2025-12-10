@@ -148,11 +148,22 @@ def main(args: argparse.Namespace) -> None:
     feature_type = config.get("feature_type", 0)
     feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
     dataset_name = DATASET_TYPES.get(dataset_type, f"DS{dataset_type}")
+    
+    # Build model tag with random_noise indicator
     model_tag = "{}_{}_{}_ep{}_bs{}_feat{}".format(
         dataset_name.replace("-", ""),
         track if track else "audio",
         os.path.splitext(os.path.basename(args.config))[0],
         config["num_epochs"], config["batch_size"], feature_type)
+    
+    # Add random noise indicator to folder name if augmentation is enabled
+    if config.get("random_noise", False):
+        model_tag = "{}_{}_{}_rand_ep{}_bs{}_feat{}".format(
+            dataset_name.replace("-", ""),
+            track if track else "audio",
+            os.path.splitext(os.path.basename(args.config))[0],
+            config["num_epochs"], config["batch_size"], feature_type)
+    
     if args.comment:
         model_tag = model_tag + "_{}".format(args.comment)
     model_tag = output_dir / model_tag
