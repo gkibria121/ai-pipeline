@@ -10,17 +10,17 @@ def calculate_simple_eer_accuracy(cm_scores_file, output_file=None, printout=Tru
     Used for datasets like Fake-or-Real that don't have tandem detection.
     
     Args:
-        cm_scores_file: Path to CM scores file
+        cm_scores_file: Path to CM scores file (format: filename label score)
         output_file: Path to save results (optional)
         printout: Whether to print and save results
         
     Returns:
         eer, accuracy
     """
-    # Load CM scores
+    # Load CM scores (format: filename, label, score)
     cm_data = np.genfromtxt(cm_scores_file, dtype=str)
-    cm_keys = cm_data[:, 2]  # bonafide or spoof
-    cm_scores = cm_data[:, 3].astype(np.float64)
+    cm_keys = cm_data[:, 1]  # bonafide or spoof
+    cm_scores = cm_data[:, 2].astype(np.float64)
     
     # Extract bona fide (real) and spoof (fake) scores
     bona_cm = cm_scores[cm_keys == 'bonafide']
