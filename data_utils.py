@@ -335,8 +335,6 @@ def apply_spectrogram_augmentation(spectrogram: np.ndarray,
         spec[:, t0:t0 + t] = spec.mean()
     
     return spec
-    else:
-        return waveform
 
 
 def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000):
