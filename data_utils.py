@@ -213,6 +213,144 @@ def add_high_pass_filter(waveform: np.ndarray, cutoff_freq: float = 100, sr: int
         return waveform
 
 
+def add_rir_simulation(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
+    """
+    Simulate Room Impulse Response (RIR) effect.
+    Creates synthetic room acoustics similar to RIR augmentation.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        sr: Sample rate
+    
+    Returns:
+        Waveform with simulated room acoustics
+    """
+    try:
+        from scipy.signal import fftconvolve
+        
+        # Generate synthetic RIR (exponentially decaying noise)
+        rt60 = np.random.uniform(0.1, 0.5)  # Reverberation time (seconds)
+        rir_length = int(rt60 * sr)
+        
+        # Create exponentially decaying impulse response
+        t = np.arange(rir_length) / sr
+        decay = np.exp(-3 * t / rt60)  # Exponential decay
+        noise = np.random.randn(rir_length)
+        rir = noise * decay
+        
+        # Normalize RIR
+        rir = rir / np.max(np.abs(rir))
+        
+        # Add direct path (stronger initial impulse)
+        rir[0] = 1.0
+        
+        # Convolve with waveform
+        convolved = fftconvolve(waveform, rir, mode='same')
+        
+        # Normalize to prevent clipping
+        max_val = np.max(np.abs(convolved))
+        if max_val > 0:
+            convolved = convolved / max_val * np.max(np.abs(waveform))
+        
+        return convolved
+    except Exception:
+        return waveform
+
+
+def add_musan_style_noise(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
+    """
+    Add MUSAN-style noise (simulates speech, music, or ambient noise).
+    Since we don't have actual MUSAN data, we simulate different noise types.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        sr: Sample rate
+    
+    Returns:
+        Waveform with added noise
+    """
+    noise_type = np.random.choice(['babble', 'music', 'ambient'])
+    
+    if noise_type == 'babble':
+        # Simulate babble noise (overlapping speech-like sounds)
+        # Use filtered noise to simulate speech spectrum
+        noise = np.random.randn(len(waveform))
+        # Apply bandpass filter (300-3400 Hz, speech range)
+        try:
+            from scipy.signal import butter, filtfilt
+            nyquist = sr / 2
+            low = 300 / nyquist
+            high = min(3400 / nyquist, 0.99)
+            b, a = butter(4, [low, high], btype='band')
+            noise = filtfilt(b, a, noise)
+        except:
+            pass
+        snr = np.random.uniform(10, 20)
+        
+    elif noise_type == 'music':
+        # Simulate music-like noise (low frequency emphasis)
+        noise = np.random.randn(len(waveform))
+        # Apply lowpass filter for music-like spectrum
+        try:
+            from scipy.signal import butter, filtfilt
+            nyquist = sr / 2
+            cutoff = min(4000 / nyquist, 0.99)
+            b, a = butter(4, cutoff, btype='low')
+            noise = filtfilt(b, a, noise)
+        except:
+            pass
+        snr = np.random.uniform(5, 15)
+        
+    else:  # ambient
+        # Ambient noise (broadband with some coloring)
+        noise = np.random.randn(len(waveform))
+        snr = np.random.uniform(15, 25)
+    
+    # Calculate scaling factor based on SNR
+    signal_power = np.mean(waveform ** 2)
+    noise_power = np.mean(noise ** 2)
+    
+    if noise_power > 0:
+        snr_linear = 10 ** (snr / 10)
+        scale = np.sqrt(signal_power / (snr_linear * noise_power))
+        noisy = waveform + scale * noise
+    else:
+        noisy = waveform
+    
+    # Normalize to prevent clipping
+    max_val = np.max(np.abs(noisy))
+    if max_val > 1.0:
+        noisy = noisy / max_val
+    
+    return noisy
+
+
+def add_chunking(waveform: np.ndarray, sr: int = 16000, chunk_sec: float = 2.0) -> np.ndarray:
+    """
+    Apply random chunking - extract a random segment of the audio.
+    This helps model learn from different parts of the audio.
+    
+    Args:
+        waveform: Audio waveform as numpy array
+        sr: Sample rate
+        chunk_sec: Chunk duration in seconds
+    
+    Returns:
+        Random chunk of the waveform (or padded if too short)
+    """
+    chunk_samples = int(chunk_sec * sr)
+    
+    if len(waveform) <= chunk_samples:
+        # Pad if too short
+        padded = np.zeros(chunk_samples)
+        padded[:len(waveform)] = waveform
+        return padded
+    
+    # Random start position
+    start = np.random.randint(0, len(waveform) - chunk_samples)
+    return waveform[start:start + chunk_samples]
+
+
 def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int = 16000) -> np.ndarray:
     """
     Apply various augmentations to waveform.
@@ -221,7 +359,7 @@ def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int
         waveform: Audio waveform as numpy array
         augmentation_type: 0=no_aug, 1=gaussian_noise, 2=background_noise, 
                           3=reverberation, 4=pitch_shift, 5=time_stretch,
-                          6=gain, 7=low_pass, 8=high_pass
+                          6=gain, 7=low_pass, 8=high_pass, 9=rir, 10=musan_noise
         sr: Sample rate
     
     Returns:
@@ -261,6 +399,12 @@ def apply_augmentation(waveform: np.ndarray, augmentation_type: int = 0, sr: int
         # High-pass filter (50-300 Hz)
         cutoff = np.random.uniform(50, 300)
         return add_high_pass_filter(waveform, cutoff_freq=cutoff, sr=sr)
+    elif augmentation_type == 9:
+        # RIR simulation (room acoustics)
+        return add_rir_simulation(waveform, sr=sr)
+    elif augmentation_type == 10:
+        # MUSAN-style noise (babble, music, ambient)
+        return add_musan_style_noise(waveform, sr=sr)
     else:
         return waveform
 
@@ -270,6 +414,7 @@ def apply_composed_augmentation(waveform: np.ndarray, sr: int = 16000,
                                  augment_prob: float = 0.8) -> np.ndarray:
     """
     Apply multiple random augmentations in sequence for stronger regularization.
+    Includes RIR & MUSAN style augmentations similar to top ASVspoof systems.
     
     Args:
         waveform: Audio waveform as numpy array
@@ -285,7 +430,8 @@ def apply_composed_augmentation(waveform: np.ndarray, sr: int = 16000,
         return waveform
     
     # Available augmentation types (excluding 0=no_aug)
-    aug_types = [1, 2, 3, 4, 5, 6, 7, 8]
+    # Includes RIR (9) and MUSAN-style noise (10) for better generalization
+    aug_types = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     
     # Randomly select how many augmentations to apply (1 to num_augmentations)
     n_augs = np.random.randint(1, num_augmentations + 1)

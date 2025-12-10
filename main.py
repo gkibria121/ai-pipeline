@@ -156,9 +156,16 @@ def main(args: argparse.Namespace) -> None:
     # Set random_noise in config
     if args.random_noise:
         config["random_noise"] = True
-        print("Random augmentation enabled for training")
+        print("Random augmentation enabled (RIR, MUSAN-style noise, pitch shift, time stretch, etc.)")
     else:
         config["random_noise"] = False
+
+    # Set weight averaging in config
+    if args.weight_avg:
+        config["weight_avg"] = True
+        print("Weight averaging (SWA) enabled for final model")
+    else:
+        config["weight_avg"] = config.get("weight_avg", True)  # Default to True
 
     # make experiment reproducible
     set_seed(args.seed, config)
@@ -353,7 +360,13 @@ def main(args: argparse.Namespace) -> None:
     # get optimizer and scheduler
     optim_config["steps_per_epoch"] = len(trn_loader)
     optimizer, scheduler = create_optimizer(model.parameters(), optim_config)
-    optimizer_swa = SWA(optimizer)
+    
+    # Setup weight averaging (SWA) if enabled
+    use_weight_avg = config.get("weight_avg", True)
+    if use_weight_avg:
+        optimizer_swa = SWA(optimizer)
+    else:
+        optimizer_swa = None
 
     best_dev_eer = 1.
     best_eval_eer = 100.
@@ -450,9 +463,11 @@ def main(args: argparse.Namespace) -> None:
                     print(log_text)
                     f_log.write(log_text + "\n")
 
-            print("Saving epoch {} for swa".format(epoch))
-            optimizer_swa.update_swa()
-            n_swa_update += 1
+            # Update SWA if enabled
+            if use_weight_avg and optimizer_swa is not None:
+                print("Saving epoch {} for SWA (weight averaging)".format(epoch))
+                optimizer_swa.update_swa()
+                n_swa_update += 1
         writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
         writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
         
@@ -463,7 +478,8 @@ def main(args: argparse.Namespace) -> None:
 
     print("Start final evaluation")
     epoch += 1
-    if n_swa_update > 0:
+    if use_weight_avg and n_swa_update > 0 and optimizer_swa is not None:
+        print("Applying Stochastic Weight Averaging (SWA) - averaging {} model snapshots".format(n_swa_update))
         optimizer_swa.swap_swa_sgd()
         optimizer_swa.bn_update(trn_loader, model, device=device)
     if dataset_type == 1:
@@ -933,7 +949,10 @@ if __name__ == "__main__":
                         help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt (default: None, uses config value)")
     parser.add_argument("--random_noise",
                         action="store_true",
-                        help="enable random data augmentation (composed: noise, reverb, pitch shift, time stretch, gain, filters + SpecAugment for spectrograms)")
+                        help="enable random data augmentation (RIR, MUSAN-style noise, pitch shift, time stretch, SpecAugment)")
+    parser.add_argument("--weight_avg",
+                        action="store_true",
+                        help="enable Stochastic Weight Averaging (SWA) for better generalization")
     parser.add_argument("--data_subset",
                         type=float,
                         default=1.0,
