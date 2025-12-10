@@ -21,21 +21,31 @@ from glob import glob
 
 # Detect if running in notebook
 try:
+    from IPython.display import display, Image as IPImage
+    import io
     get_ipython()
     IN_NOTEBOOK = True
-    # Use inline backend for notebooks
-    try:
-        get_ipython().run_line_magic('matplotlib', 'inline')
-    except:
-        pass
-except NameError:
+    get_ipython().run_line_magic('matplotlib', 'inline')
+except:
     IN_NOTEBOOK = False
-    # Use Agg backend for scripts (non-interactive)
     matplotlib.use('Agg')
 
 # Set style
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
+
+
+def show_plot_in_notebook(fig):
+    """Display plot in notebook using IPython.display"""
+    if IN_NOTEBOOK:
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        display(IPImage(buf.read()))
+        plt.close(fig)
+    else:
+        plt.show()
+        plt.close(fig)
 
 
 def load_metrics(metrics_path: Path) -> Optional[Dict]:
@@ -55,7 +65,7 @@ def load_metrics(metrics_path: Path) -> Optional[Dict]:
         return None
 
 
-def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
+def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = ""):
     """Plot training loss and dev EER curves."""
     epochs = metrics['epochs']
     train_loss = metrics['train_loss']
@@ -87,21 +97,18 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "",
     
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✓ Saved training curves to {save_path}")
-    if show or IN_NOTEBOOK:
-        plt.show()
-    if not (show or IN_NOTEBOOK):
-        plt.close()
+    show_plot_in_notebook(fig)
 
 
-def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
+def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = ""):
     """Plot accuracy curves for dev and eval sets."""
     epochs = metrics['epochs']
     dev_acc = metrics.get('dev_acc', [])
     eval_acc = metrics.get('eval_acc', [])
     
-    plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
     
     if dev_acc:
         dev_acc_clean = [x if not np.isnan(x) else None for x in dev_acc]
@@ -122,21 +129,18 @@ def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "",
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✓ Saved accuracy curves to {save_path}")
-    if show or IN_NOTEBOOK:
-        plt.show()
-    if not (show or IN_NOTEBOOK):
-        plt.close()
+    show_plot_in_notebook(fig)
 
 
-def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
+def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = ""):
     """Plot dev vs eval EER comparison."""
     epochs = metrics['epochs']
     dev_eer = metrics['dev_eer']
     eval_eer = metrics.get('eval_eer', [])
     
-    plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 6))
     plt.plot(epochs, dev_eer, 'g-o', linewidth=2, markersize=5, 
             label='Dev EER', alpha=0.8)
     
@@ -154,12 +158,9 @@ def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = "", 
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        fig.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"✓ Saved EER comparison to {save_path}")
-    if show or IN_NOTEBOOK:
-        plt.show()
-    if not (show or IN_NOTEBOOK):
-        plt.close()
+    show_plot_in_notebook(fig)
 
 
 def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = "", show: bool = False):
@@ -453,10 +454,10 @@ Examples:
         print(f"📈 Generating visualizations for: {model_name}")
         
         save_path = output_dir if save_plots else None
-        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", args.show)
-        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", args.show)
-        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", args.show)
-        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", args.show)
+        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}")
+        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}")
+        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}")
+        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}")
         
         if args.show_summary:
             print_summary(metrics, model_name)
@@ -466,7 +467,7 @@ Examples:
         if args.compare:
             print(f"📊 Generating comparison plots for {len(metrics_list)} models")
             save_path = output_dir / "model_comparison.png" if save_plots else None
-            plot_comparison(metrics_list, labels, save_path, args.show)
+            plot_comparison(metrics_list, labels, save_path)
         
         # Individual plots for each model
         for metrics, label in zip(metrics_list, labels):
@@ -479,10 +480,10 @@ Examples:
             else:
                 save_base = None
             
-            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", args.show)
-            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", args.show)
-            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", args.show)
-            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", args.show)
+            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}")
+            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}")
+            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}")
+            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}")
             
             if args.show_summary:
                 print_summary(metrics, label)
