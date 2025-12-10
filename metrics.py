@@ -52,8 +52,8 @@ class MetricsTracker:
         if not self.csv_file.exists():
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['Epoch', 'Train_Loss', 'Dev_EER', 'Dev_tDCF', 'Dev_Acc',
-                                'Eval_EER', 'Eval_tDCF', 'Eval_Acc', 'Best_Dev_EER', 'Best_Dev_tDCF'])
+                writer.writerow(['epoch', 'train_loss', 'dev_eer', 'dev_tdcf', 'dev_acc',
+                                'eval_eer', 'eval_tdcf', 'eval_acc', 'best_dev_eer', 'best_dev_tdcf'])
     
     def add_epoch(self, epoch: int, train_loss: float, dev_eer: float, 
                   dev_tdcf: float, dev_acc: float, eval_eer: Optional[float] = None, 
