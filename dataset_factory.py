@@ -43,7 +43,7 @@ def get_dataset_info(dataset_type: int) -> Dict:
     elif dataset_type == 2:
         return {
             "name": "Fake-or-Real",
-            "base_path": "./fake_or_real",
+            "base_path": "./fake_or_real/for-2sec/for-2seconds",
             "has_protocols": False,
             "track": None,
             "file_format": "wav"
@@ -181,9 +181,11 @@ def load_fake_or_real_data(base_path: Path) -> Tuple[Dict, List, Dict, List, Lis
     """
     base_path = Path(base_path)
     
-    # Assumes structure: training/real/, training/fake/, validation/real/, validation/fake/
+    # Structure: training/{real,fake}/, testing/{real,fake}/, validation/{real,fake}/
     train_real_dir = base_path / "training" / "real"
     train_fake_dir = base_path / "training" / "fake"
+    test_real_dir = base_path / "testing" / "real"
+    test_fake_dir = base_path / "testing" / "fake"
     val_real_dir = base_path / "validation" / "real"
     val_fake_dir = base_path / "validation" / "fake"
     
@@ -191,6 +193,8 @@ def load_fake_or_real_data(base_path: Path) -> Tuple[Dict, List, Dict, List, Lis
     train_files = []
     dev_labels = {}
     dev_files = []
+    eval_labels = {}
+    eval_files = []
     
     # Load training real files
     if train_real_dir.exists():
@@ -206,22 +210,42 @@ def load_fake_or_real_data(base_path: Path) -> Tuple[Dict, List, Dict, List, Lis
             train_files.append(rel_path)
             train_labels[rel_path] = 0  # 0 = spoof/fake
     
-    # Load validation real files
+    # Load validation real files (use as dev set)
     if val_real_dir.exists():
         for audio_file in val_real_dir.glob("*.wav"):
             rel_path = f"validation/real/{audio_file.name}"
             dev_files.append(rel_path)
             dev_labels[rel_path] = 1
     
-    # Load validation fake files
+    # Load validation fake files (use as dev set)
     if val_fake_dir.exists():
         for audio_file in val_fake_dir.glob("*.wav"):
             rel_path = f"validation/fake/{audio_file.name}"
             dev_files.append(rel_path)
             dev_labels[rel_path] = 0
     
-    # Use validation set as eval set for now
-    eval_files = dev_files.copy()
+    # Load testing real files (use as eval set)
+    if test_real_dir.exists():
+        for audio_file in test_real_dir.glob("*.wav"):
+            rel_path = f"testing/real/{audio_file.name}"
+            eval_files.append(rel_path)
+            eval_labels[rel_path] = 1
+    
+    # Load testing fake files (use as eval set)
+    if test_fake_dir.exists():
+        for audio_file in test_fake_dir.glob("*.wav"):
+            rel_path = f"testing/fake/{audio_file.name}"
+            eval_files.append(rel_path)
+            eval_labels[rel_path] = 0
+    
+    # Print dataset statistics
+    print(f"\nDataset loaded from: {base_path}")
+    print(f"Training samples: {len(train_files)} (Real: {sum(1 for v in train_labels.values() if v == 1)}, Fake: {sum(1 for v in train_labels.values() if v == 0)})")
+    print(f"Validation samples: {len(dev_files)} (Real: {sum(1 for v in dev_labels.values() if v == 1)}, Fake: {sum(1 for v in dev_labels.values() if v == 0)})")
+    print(f"Testing samples: {len(eval_files)} (Real: {sum(1 for v in eval_labels.values() if v == 1)}, Fake: {sum(1 for v in eval_labels.values() if v == 0)})\n")
+    
+    if len(train_files) == 0:
+        raise ValueError(f"No training files found in {base_path}. Please check the dataset path and structure.")
     
     return train_labels, train_files, dev_labels, dev_files, eval_files
 
