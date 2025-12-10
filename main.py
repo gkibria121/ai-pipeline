@@ -179,16 +179,40 @@ def main(args: argparse.Namespace) -> None:
     print(f"Generating feature analysis visualization...")
     print(f"{'='*50}")
     try:
-        # Get a sample audio file for visualization
+        # Get a sample audio file for visualization (dataset-aware)
         sample_audio = None
-        trn_database_path = database_path / "ASVspoof2019_{}_train/flac".format(track)
-        if trn_database_path.exists():
-            audio_files = list(trn_database_path.glob("*.flac"))
-            if audio_files:
-                sample_audio = str(audio_files[0])
+        file_ext = dataset_info['file_format']
+        
+        if dataset_type == 1:
+            # ASVspoof2019
+            trn_database_path = database_path / "ASVspoof2019_{}_train/flac".format(track)
+            if trn_database_path.exists():
+                audio_files = list(trn_database_path.glob(f"*.{file_ext}"))
+                if audio_files:
+                    sample_audio = str(audio_files[0])
+        elif dataset_type == 2:
+            # Fake-or-Real
+            trn_database_path = database_path / "training"
+            if trn_database_path.exists():
+                # Try both fake and real subdirectories
+                for subdir in ['fake', 'real']:
+                    search_path = trn_database_path / subdir
+                    if search_path.exists():
+                        audio_files = list(search_path.glob(f"*.{file_ext}"))
+                        if audio_files:
+                            sample_audio = str(audio_files[0])
+                            break
+        elif dataset_type == 3:
+            # SceneFake
+            trn_database_path = database_path / "train"
+            if trn_database_path.exists():
+                audio_files = list(trn_database_path.glob(f"**/*.{file_ext}"))
+                if audio_files:
+                    sample_audio = str(audio_files[0])
         
         if sample_audio:
             feature_viz_dir = model_tag / "feature_analysis"
+            print(f"Using sample: {Path(sample_audio).name}")
             analyze_and_visualize_features(
                 audio_file=sample_audio,
                 feature_type=feature_type,
@@ -196,9 +220,12 @@ def main(args: argparse.Namespace) -> None:
                 sr=16000
             )
         else:
-            print("⚠️  No sample audio found for feature visualization")
+            print(f"⚠️  No sample audio found in {database_path}")
+            print(f"   Looking for *.{file_ext} files in training directory")
     except Exception as e:
         print(f"⚠️  Could not generate feature analysis: {e}")
+        import traceback
+        traceback.print_exc()
 
     # set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

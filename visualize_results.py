@@ -91,7 +91,7 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "",
         print(f"✓ Saved training curves to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
-    else:
+    if not (show or IN_NOTEBOOK):
         plt.close()
 
 
@@ -126,7 +126,7 @@ def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "",
         print(f"✓ Saved accuracy curves to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
-    else:
+    if not (show or IN_NOTEBOOK):
         plt.close()
 
 
@@ -158,7 +158,7 @@ def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = "", 
         print(f"✓ Saved EER comparison to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
-    else:
+    if not (show or IN_NOTEBOOK):
         plt.close()
 
 
@@ -225,7 +225,7 @@ def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = "", sho
         print(f"✓ Saved comprehensive metrics to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
-    else:
+    if not (show or IN_NOTEBOOK):
         plt.close()
 
 
@@ -317,7 +317,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
         print(f"✓ Saved comparison plot to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
-    else:
+    if not (show or IN_NOTEBOOK):
         plt.close()
 
 
@@ -439,7 +439,10 @@ Examples:
         print(f"✓ Saving plots to: {output_dir}\n")
     else:
         output_dir = None
-        print(f"📊 Displaying plots only (use --output <dir> to save)\n")
+        if IN_NOTEBOOK:
+            print(f"📊 Displaying plots in notebook\n")
+        else:
+            print(f"📊 Displaying plots only (use --output <dir> to save)\n")
     
     # Generate visualizations
     if len(metrics_list) == 1:
@@ -450,10 +453,10 @@ Examples:
         print(f"📈 Generating visualizations for: {model_name}")
         
         save_path = output_dir if save_plots else None
-        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", True)
-        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", True)
-        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", True)
-        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", True)
+        plot_training_curves(metrics, save_path / "training_curves.png" if save_path else None, f" - {model_name}", args.show)
+        plot_accuracy_curves(metrics, save_path / "accuracy_curves.png" if save_path else None, f" - {model_name}", args.show)
+        plot_eer_comparison(metrics, save_path / "eer_comparison.png" if save_path else None, f" - {model_name}", args.show)
+        plot_all_metrics(metrics, save_path / "all_metrics.png" if save_path else None, f" - {model_name}", args.show)
         
         if args.show_summary:
             print_summary(metrics, model_name)
@@ -463,7 +466,7 @@ Examples:
         if args.compare:
             print(f"📊 Generating comparison plots for {len(metrics_list)} models")
             save_path = output_dir / "model_comparison.png" if save_plots else None
-            plot_comparison(metrics_list, labels, save_path, True)
+            plot_comparison(metrics_list, labels, save_path, args.show)
         
         # Individual plots for each model
         for metrics, label in zip(metrics_list, labels):
@@ -476,10 +479,10 @@ Examples:
             else:
                 save_base = None
             
-            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", True)
-            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", True)
-            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", True)
-            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", True)
+            plot_training_curves(metrics, save_base / "training_curves.png" if save_base else None, f" - {label}", args.show)
+            plot_accuracy_curves(metrics, save_base / "accuracy_curves.png" if save_base else None, f" - {label}", args.show)
+            plot_eer_comparison(metrics, save_base / "eer_comparison.png" if save_base else None, f" - {label}", args.show)
+            plot_all_metrics(metrics, save_base / "all_metrics.png" if save_base else None, f" - {label}", args.show)
             
             if args.show_summary:
                 print_summary(metrics, label)
