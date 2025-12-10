@@ -304,6 +304,9 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             shuffle=True,
             drop_last=True,
             pin_memory=True,
+            num_workers=4,
+            persistent_workers=True,
+            prefetch_factor=2,
             worker_init_fn=seed_worker,
             generator=gen
         )
@@ -313,7 +316,9 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            pin_memory=True
+            pin_memory=True,
+            num_workers=2,
+            persistent_workers=True
         )
         
         eval_loader = DataLoader(
@@ -321,7 +326,9 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            pin_memory=True
+            pin_memory=True,
+            num_workers=2,
+            persistent_workers=True
         )
         
         return train_loader, dev_loader, eval_loader
