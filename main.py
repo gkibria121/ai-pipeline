@@ -43,13 +43,17 @@ warnings.filterwarnings("ignore", message=".*Please use the new API settings.*")
 warnings.filterwarnings("ignore", message=".*does not support bfloat16 compilation natively.*")
 
 # PyTorch 2.x optimizations - Use new API for TF32 control (PyTorch 2.9+)
+# Track TF32 status for printing later
+TF32_ENABLED = False
 if hasattr(torch.backends.cuda.matmul, 'fp32_precision'):
-    # New PyTorch 2.9+ API
+    # New PyTorch 2.9+ API - use ONLY this, don't mix with old API
     torch.backends.cuda.matmul.fp32_precision = 'tf32'  # or 'highest' for max precision
     torch.backends.cudnn.conv.fp32_precision = 'tf32'
+    TF32_ENABLED = True
 elif hasattr(torch, 'set_float32_matmul_precision'):
     # Fallback for PyTorch 2.0-2.8
     torch.set_float32_matmul_precision('high')
+    TF32_ENABLED = True
 
 # Check for BF16 support - requires compute capability 8.0+ (Ampere/Ada/Hopper)
 # T4 (7.5), V100 (7.0) don't have native BF16, only Ampere+ (A100, RTX 30xx, etc.)
@@ -273,7 +277,7 @@ def main(args: argparse.Namespace) -> None:
         print(f"BF16 Native Support: {BF16_NATIVE_SUPPORTED}")
         if not BF16_NATIVE_SUPPORTED:
             print(f"  → Using FP16 mixed precision (BF16 requires Ampere+ GPU)")
-        print(f"TF32 Enabled: {torch.backends.cuda.matmul.allow_tf32}")
+        print(f"TF32 Enabled: {TF32_ENABLED}")
     
     # Enable CuDNN optimizations
     if str_to_bool(config.get("cudnn_benchmark_toggle", "True")):
