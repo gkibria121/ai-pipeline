@@ -49,11 +49,17 @@ def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
     try:
         cpu_count = os.cpu_count() or 1
-        # Use at most 4 workers for training, but cap at cpu_count - 1
-        max_workers = min(4, max(1, cpu_count - 1))
-        return max_workers
+        if cpu_count <= 2:
+            # Very limited CPU - use 0 workers (main process only)
+            return 0
+        elif cpu_count <= 4:
+            # Limited CPU - use 1-2 workers
+            return max(1, cpu_count // 2)
+        else:
+            # More CPUs available - use up to 4 workers
+            return min(4, cpu_count - 1)
     except:
-        return 2  # Safe default
+        return 0  # Safe default - no workers
 
 
 def main(args: argparse.Namespace) -> None:
