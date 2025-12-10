@@ -25,7 +25,8 @@ from torchcontrib.optim import SWA
 
 from data_utils import (Dataset_ASVspoof2019_train,
                         Dataset_ASVspoof2019_devNeval, genSpoof_list, FEATURE_TYPES)
-from evaluation import calculate_tDCF_EER
+from dataset_factory import get_dataset_info, create_dataset_loaders, DATASET_TYPES
+from evaluation import calculate_tDCF_EER, calculate_simple_eer_accuracy
 from metrics import MetricsTracker, save_all_metrics
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
 from feature_analysis import analyze_and_visualize_features
@@ -52,8 +53,17 @@ def main(args: argparse.Namespace) -> None:
     if args.batch_size is not None:
         config["batch_size"] = args.batch_size
     
+    # Set dataset type
+    dataset_type = args.dataset if args.dataset is not None else config.get("dataset_type", 1)
+    dataset_info = get_dataset_info(dataset_type)
+    
+    # Display dataset information
+    print("\n" + "="*70)
+    print(f"DATASET: {dataset_info['name']} (Type {dataset_type})")
+    print("="*70)
+    
     optim_config["epochs"] = config["num_epochs"]
-    track = config["track"]
+    track = config.get("track", dataset_info.get("track", "LA"))
     assert track in ["LA", "PA", "DF"], "Invalid track given"
     if "eval_all_best" not in config:
         config["eval_all_best"] = "True"
@@ -82,8 +92,14 @@ def main(args: argparse.Namespace) -> None:
 
     # define database related paths
     output_dir = Path(args.output_dir)
-    prefix_2019 = "ASVspoof2019.{}".format(track)
-    database_path = Path(config["database_path"])
+    
+    # Use dataset-specific path or config path
+    if dataset_type == 1:
+        database_path = Path(config.get("database_path", dataset_info["base_path"]))
+        prefix_2019 = "ASVspoof2019.{}".format(track)
+    else:
+        database_path = Path(dataset_info["base_path"])
+        prefix_2019 = None
     dev_trial_path = (database_path /
                       "ASVspoof2019_{}_cm_protocols/{}.cm.dev.trl.txt".format(
                           track, prefix_2019))
@@ -95,8 +111,10 @@ def main(args: argparse.Namespace) -> None:
     # define model related paths
     feature_type = config.get("feature_type", 0)
     feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
-    model_tag = "{}_{}_ep{}_bs{}_feat{}".format(
-        track,
+    dataset_name = DATASET_TYPES.get(dataset_type, f"DS{dataset_type}")
+    model_tag = "{}_{}_{}_ep{}_bs{}_feat{}".format(
+        dataset_name.replace("-", ""),
+        track if track else "audio",
         os.path.splitext(os.path.basename(args.config))[0],
         config["num_epochs"], config["batch_size"], feature_type)
     if args.comment:
@@ -145,8 +163,13 @@ def main(args: argparse.Namespace) -> None:
     model = get_model(model_config, device)
 
     # define dataloaders
-    trn_loader, dev_loader, eval_loader = get_loader(
-        database_path, args.seed, config)
+    if dataset_type == 1:
+        trn_loader, dev_loader, eval_loader = get_loader(
+            database_path, args.seed, config)
+    else:
+        trn_loader, dev_loader, eval_loader = create_dataset_loaders(
+            dataset_type, database_path, feature_type, 
+            config.get("random_noise", False), config["batch_size"], args.seed)
 
     # evaluates pretrained model and exit script
     if args.eval:
@@ -156,15 +179,12 @@ def main(args: argparse.Namespace) -> None:
         print("Start evaluation...")
         produce_evaluation_file(eval_loader, model, device,
                                 eval_score_path, eval_trial_path)
-        calculate_tDCF_EER(cm_scores_file=eval_score_path,
-                           asv_score_file=database_path /
-                           config["asv_score_path"],
-                           output_file=model_tag / "t-DCF_EER.txt")
+        evaluate_model(dataset_type, eval_score_path, database_path, config,
+                      model_tag / "evaluation_results.txt")
         print("DONE.")
-        eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(
-            cm_scores_file=eval_score_path,
-            asv_score_file=database_path / config["asv_score_path"],
-            output_file=model_tag/"loaded_model_t-DCF_EER.txt")
+        eval_eer, eval_tdcf, eval_acc = evaluate_model(
+            dataset_type, eval_score_path, database_path, config,
+            model_tag/"loaded_model_results.txt")
         sys.exit(0)
 
     # get optimizer and scheduler
@@ -199,13 +219,18 @@ def main(args: argparse.Namespace) -> None:
         print("\nValidating on development set...")
         produce_evaluation_file(dev_loader, model, device,
                                 metric_path/"dev_score.txt", dev_trial_path)
-        dev_eer, dev_tdcf, dev_acc = calculate_tDCF_EER(
-            cm_scores_file=metric_path/"dev_score.txt",
-            asv_score_file=database_path/config["asv_score_path"],
-            output_file=metric_path/"dev_t-DCF_EER_{}epo.txt".format(epoch),
-            printout=False)
-        print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_tdcf:{:.5f}, dev_acc: {:.2f}%".format(
-            running_loss, dev_eer, dev_tdcf, dev_acc))
+        dev_eer, dev_tdcf, dev_acc = evaluate_model(
+            dataset_type, metric_path/"dev_score.txt", database_path, config,
+            metric_path/"dev_results_{:03d}epo.txt".format(epoch))
+        
+        # Handle None t-DCF for non-ASVspoof datasets
+        if dev_tdcf is None:
+            dev_tdcf = 0.0
+            print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_acc: {:.2f}%".format(
+                running_loss, dev_eer, dev_acc))
+        else:
+            print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_tdcf:{:.5f}, dev_acc: {:.2f}%".format(
+                running_loss, dev_eer, dev_tdcf, dev_acc))
         writer.add_scalar("loss", running_loss, epoch)
         writer.add_scalar("dev_eer", dev_eer, epoch)
         writer.add_scalar("dev_tdcf", dev_tdcf, epoch)
@@ -227,11 +252,13 @@ def main(args: argparse.Namespace) -> None:
             if str_to_bool(config["eval_all_best"]):
                 produce_evaluation_file(eval_loader, model, device,
                                         eval_score_path, eval_trial_path)
-                eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(
-                    cm_scores_file=eval_score_path,
-                    asv_score_file=database_path / config["asv_score_path"],
-                    output_file=metric_path /
-                    "t-DCF_EER_{:03d}epo.txt".format(epoch))
+                eval_eer, eval_tdcf, eval_acc = evaluate_model(
+                    dataset_type, eval_score_path, database_path, config,
+                    metric_path / "eval_results_{:03d}epo.txt".format(epoch))
+                
+                # Handle None t-DCF
+                if eval_tdcf is None:
+                    eval_tdcf = 0.0
                 
                 # Store current eval metrics for tracking
                 current_eval_eer = eval_eer
@@ -269,10 +296,9 @@ def main(args: argparse.Namespace) -> None:
         optimizer_swa.bn_update(trn_loader, model, device=device)
     produce_evaluation_file(eval_loader, model, device, eval_score_path,
                             eval_trial_path)
-    eval_eer, eval_tdcf, eval_acc = calculate_tDCF_EER(cm_scores_file=eval_score_path,
-                                             asv_score_file=database_path /
-                                             config["asv_score_path"],
-                                             output_file=model_tag / "t-DCF_EER.txt")
+    eval_eer, eval_tdcf, eval_acc = evaluate_model(
+        dataset_type, eval_score_path, database_path, config,
+        model_tag / "final_evaluation_results.txt")
     f_log = open(model_tag / "metric_log.txt", "a")
     f_log.write("=" * 5 + "\n")
     f_log.write("EER: {:.3f}, min t-DCF: {:.5f}".format(eval_eer, eval_tdcf))
@@ -294,6 +320,27 @@ def main(args: argparse.Namespace) -> None:
     
     print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}".format(
         best_eval_eer, best_eval_tdcf))
+
+
+def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_file):
+    """
+    Evaluate model using appropriate metrics based on dataset type.
+    
+    Returns:
+        eer, metric2, accuracy (metric2 is t-DCF for ASVspoof, None for others)
+    """
+    if dataset_type == 1:  # ASVspoof2019
+        return calculate_tDCF_EER(
+            cm_scores_file=cm_scores_file,
+            asv_score_file=database_path / config["asv_score_path"],
+            output_file=output_file
+        )
+    else:  # Fake-or-Real or other simple datasets
+        eer, acc = calculate_simple_eer_accuracy(
+            cm_scores_file=cm_scores_file,
+            output_file=output_file
+        )
+        return eer, None, acc  # No t-DCF for these datasets
 
 
 def get_model(model_config: Dict, device: torch.device):
@@ -477,6 +524,11 @@ if __name__ == "__main__":
                         type=int,
                         default=1234,
                         help="random seed (default: 1234)")
+    parser.add_argument("--dataset",
+                        type=int,
+                        default=None,
+                        choices=[1, 2, 3],
+                        help="dataset to use: 1=ASVspoof2019, 2=Fake-or-Real, 3=SceneFake (default: None, uses config value or 1)")
     parser.add_argument("--epochs",
                         type=int,
                         default=None,

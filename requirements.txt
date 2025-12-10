@@ -4,3 +4,5 @@ numpy
 soundfile
 tqdm
 librosa
+kagglehub
+matplotlib

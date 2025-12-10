@@ -4,6 +4,46 @@ import os
 import numpy as np
 
 
+def calculate_simple_eer_accuracy(cm_scores_file, output_file=None, printout=True):
+    """
+    Calculate EER and accuracy for simple binary classification (no ASV scores).
+    Used for datasets like Fake-or-Real that don't have tandem detection.
+    
+    Args:
+        cm_scores_file: Path to CM scores file
+        output_file: Path to save results (optional)
+        printout: Whether to print and save results
+        
+    Returns:
+        eer, accuracy
+    """
+    # Load CM scores
+    cm_data = np.genfromtxt(cm_scores_file, dtype=str)
+    cm_keys = cm_data[:, 2]  # bonafide or spoof
+    cm_scores = cm_data[:, 3].astype(np.float64)
+    
+    # Extract bona fide (real) and spoof (fake) scores
+    bona_cm = cm_scores[cm_keys == 'bonafide']
+    spoof_cm = cm_scores[cm_keys == 'spoof']
+    
+    # Calculate EER and threshold
+    eer_cm, cm_threshold = compute_eer(bona_cm, spoof_cm)
+    
+    # Calculate accuracy at EER threshold
+    accuracy = compute_accuracy(bona_cm, spoof_cm, cm_threshold)
+    
+    if printout and output_file:
+        with open(output_file, "w") as f_res:
+            f_res.write('\\nCLASSIFICATION RESULTS\\n')
+            f_res.write('\\tEER\\t\\t= {:8.9f} % '
+                        '(Equal error rate)\\n'.format(eer_cm * 100))
+            f_res.write('\\tAccuracy\\t= {:8.4f} % '
+                        '(Classification accuracy at EER threshold)\\n'.format(accuracy))
+        os.system(f"cat {output_file}")
+    
+    return eer_cm * 100, accuracy
+
+
 def compute_accuracy(bona_cm, spoof_cm, threshold):
     """
     Compute accuracy at a given threshold.
