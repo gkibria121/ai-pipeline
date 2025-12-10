@@ -171,9 +171,9 @@ def main(args: argparse.Namespace) -> None:
         print(f"⚠️  Could not generate feature analysis: {e}")
 
     # set device
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: {}".format(device))
-    if device == "cpu":
+    if device.type == "cpu":
         raise ValueError("GPU not detected!")
 
     # define model architecture
@@ -568,7 +568,7 @@ def train_epoch(
     model.train()
 
     # Enable mixed precision training for faster computation
-    use_amp = config.get("use_amp", True) and device.type == "cuda"
+    use_amp = config.get("use_amp", True) and torch.cuda.is_available()
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
 
     # set objective (Loss) functions
