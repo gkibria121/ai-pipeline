@@ -343,6 +343,16 @@ def main(args: argparse.Namespace) -> None:
         torch.save(model.state_dict(),
                    model_save_path / "best.pth")
     
+    # Add final evaluation to metrics tracker
+    # Use the last training loss since this is post-training evaluation
+    final_train_loss = metrics_tracker.metrics['train_loss'][-1] if metrics_tracker.metrics['train_loss'] else 0.0
+    final_dev_eer = metrics_tracker.metrics['dev_eer'][-1] if metrics_tracker.metrics['dev_eer'] else 0.0
+    final_dev_tdcf = metrics_tracker.metrics['dev_tdcf'][-1] if metrics_tracker.metrics['dev_tdcf'] else 0.0
+    final_dev_acc = metrics_tracker.metrics['dev_acc'][-1] if metrics_tracker.metrics['dev_acc'] else 0.0
+    
+    metrics_tracker.add_epoch(epoch, final_train_loss, final_dev_eer, final_dev_tdcf, final_dev_acc,
+                             eval_eer, eval_tdcf, eval_acc, best_dev_eer, best_dev_tdcf)
+    
     # Save all metrics and generate visualizations
     save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
                      metric_path, config)
