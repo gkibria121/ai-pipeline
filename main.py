@@ -397,8 +397,13 @@ def main(args: argparse.Namespace) -> None:
     best_dev_eer = 1.
     best_eval_eer = 100.
     best_eval_acc = 0.0
-    best_dev_tdcf = 0.05
-    best_eval_tdcf = 1.
+    # Only track t-DCF for ASVspoof2019 dataset
+    if dataset_type == 1:
+        best_dev_tdcf = 0.05
+        best_eval_tdcf = 1.
+    else:
+        best_dev_tdcf = None
+        best_eval_tdcf = None
     n_swa_update = 0  # number of snapshots of model to use in SWA
     f_log = open(model_tag / "metric_log.txt", "a")
     f_log.write("=" * 5 + "\n")
@@ -432,7 +437,6 @@ def main(args: argparse.Namespace) -> None:
         
         # Handle None t-DCF for non-ASVspoof datasets
         if dev_tdcf is None:
-            dev_tdcf = 0.0
             print("DONE.\nLoss:{:.5f}, dev_eer: {:.3f}, dev_acc: {:.2f}%".format(
                 running_loss, dev_eer, dev_acc))
         else:
@@ -440,9 +444,9 @@ def main(args: argparse.Namespace) -> None:
                 running_loss, dev_eer, dev_tdcf, dev_acc))
         writer.add_scalar("loss", running_loss, epoch)
         writer.add_scalar("dev_eer", dev_eer, epoch)
-        writer.add_scalar("dev_tdcf", dev_tdcf, epoch)
-
-        best_dev_tdcf = min(dev_tdcf, best_dev_tdcf)
+        if dev_tdcf is not None:
+            writer.add_scalar("dev_tdcf", dev_tdcf, epoch)
+            best_dev_tdcf = min(dev_tdcf, best_dev_tdcf)
         
         # Initialize eval metrics
         current_eval_eer = None
@@ -467,10 +471,6 @@ def main(args: argparse.Namespace) -> None:
                     dataset_type, eval_score_path, database_path, config,
                     metric_path / "eval_results_{:03d}epo.txt".format(epoch))
                 
-                # Handle None t-DCF
-                if eval_tdcf is None:
-                    eval_tdcf = 0.0
-                
                 # Store current eval metrics for tracking
                 current_eval_eer = eval_eer
                 current_eval_tdcf = eval_tdcf
@@ -480,7 +480,12 @@ def main(args: argparse.Namespace) -> None:
                 if eval_eer < best_eval_eer:
                     log_text += "best eer, {:.4f}%".format(eval_eer)
                     best_eval_eer = eval_eer
-                if eval_tdcf < best_eval_tdcf:
+                    best_eval_acc = eval_acc
+                    # For non-ASVspoof, save best model based on EER
+                    if eval_tdcf is None:
+                        torch.save(model.state_dict(),
+                                   model_save_path / "best.pth")
+                if eval_tdcf is not None and eval_tdcf < best_eval_tdcf:
                     log_text += "best tdcf, {:.4f}".format(eval_tdcf)
                     best_eval_tdcf = eval_tdcf
                     torch.save(model.state_dict(),
@@ -503,13 +508,18 @@ def main(args: argparse.Namespace) -> None:
             optimizer_swa.update_swa()
             n_swa_update += 1
             
-        writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
-        writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
+            writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
+        if best_dev_tdcf is not None:
+            writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
         
-        # Log epoch metrics to tracker
-        metrics_tracker.add_epoch(epoch, running_loss, dev_eer, dev_tdcf, dev_acc,
-                                 current_eval_eer, current_eval_tdcf, current_eval_acc,
-                                 best_dev_eer, best_dev_tdcf)
+        # Log epoch metrics to tracker (use 0.0 for None t-DCF values to maintain array structure)
+        metrics_tracker.add_epoch(epoch, running_loss, dev_eer, 
+                                 dev_tdcf if dev_tdcf is not None else 0.0, dev_acc,
+                                 current_eval_eer, 
+                                 current_eval_tdcf if current_eval_tdcf is not None else None, 
+                                 current_eval_acc,
+                                 best_dev_eer, 
+                                 best_dev_tdcf if best_dev_tdcf is not None else 0.0)
 
     print("Start final evaluation")
     epoch += 1
@@ -556,11 +566,12 @@ def main(args: argparse.Namespace) -> None:
     final_dev_acc = metrics_tracker.metrics['dev_acc'][-1] if metrics_tracker.metrics['dev_acc'] else 0.0
     
     metrics_tracker.add_epoch(epoch, final_train_loss, final_dev_eer, final_dev_tdcf, final_dev_acc,
-                             eval_eer, eval_tdcf, eval_acc, best_dev_eer, best_dev_tdcf)
+                             eval_eer, eval_tdcf if eval_tdcf is not None else None, eval_acc, 
+                             best_dev_eer, best_dev_tdcf if best_dev_tdcf is not None else 0.0)
     
-    # Save all metrics and generate visualizations
+    # Save all metrics and generate visualizations (pass dataset_type for conditional t-DCF display)
     save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
-                     metric_path, config)
+                     metric_path, config, dataset_type=dataset_type)
     
     # Generate comprehensive visualizations
     print("\n" + "=" * 80)
@@ -586,16 +597,17 @@ def main(args: argparse.Namespace) -> None:
     accuracy_plot_path = metric_path / "accuracy_comparison.png"
     plot_accuracy_comparison(metrics_tracker.get_metrics(), accuracy_plot_path)
     
-    # Calculate final evaluation metrics
-    eval_accuracy = 100 * np.sum(eval_y_true == eval_y_pred) / len(eval_y_true)
+    # Use EER-optimal threshold accuracy (same as evaluate_model reports)
+    # This accuracy is the meaningful one - at EER threshold
     final_eval_metrics = {
         'eer': eval_metrics['eer'],
         'roc_auc': eval_metrics['roc_auc'],
-        'accuracy': eval_accuracy
+        'accuracy': best_eval_acc  # Use EER-optimal accuracy from evaluate_model
     }
     
-    # Display comprehensive summary
-    display_final_summary(metrics_tracker.get_metrics(), final_eval_metrics, metric_path)
+    # Display comprehensive summary (pass dataset_type for conditional t-DCF display)
+    display_final_summary(metrics_tracker.get_metrics(), final_eval_metrics, metric_path, 
+                         dataset_type=dataset_type)
     
     print("\n[OK] All visualizations generated successfully!")
     print("=" * 80 + "\n")
