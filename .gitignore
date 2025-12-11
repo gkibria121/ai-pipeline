@@ -1,6 +1,7 @@
 # etc
 _*
 .*
+!.dockerignore
 exp_result/ 
 depreciated/
 LA/
