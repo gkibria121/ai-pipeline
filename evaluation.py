@@ -1,7 +1,57 @@
 import sys
 import os
+from pathlib import Path
 
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+def plot_confusion_matrix_eval(y_true, y_pred, save_path, threshold, eer, accuracy):
+    """
+    Plot and save confusion matrix for evaluation results.
+    
+    Args:
+        y_true: True labels (0=spoof/fake, 1=bonafide/real)
+        y_pred: Predicted labels
+        save_path: Path to save the plot
+        threshold: EER threshold used for predictions
+        eer: Equal Error Rate
+        accuracy: Accuracy at EER threshold
+    """
+    from sklearn.metrics import confusion_matrix
+    
+    labels = ['Fake/Spoof', 'Real/Bonafide']
+    cm = confusion_matrix(y_true, y_pred)
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=labels, yticklabels=labels,
+                cbar_kws={'label': 'Count'}, annot_kws={'size': 14})
+    
+    plt.title(f'Confusion Matrix (EER Threshold = {threshold:.4f})', 
+              fontsize=14, fontweight='bold', pad=20)
+    plt.ylabel('True Label', fontsize=12)
+    plt.xlabel('Predicted Label', fontsize=12)
+    
+    # Add metrics text below
+    total = np.sum(cm)
+    tn, fp, fn, tp = cm.ravel()
+    
+    metrics_text = (f'EER: {eer:.2f}% | Accuracy: {accuracy:.2f}%\n'
+                    f'TP: {tp} | TN: {tn} | FP: {fp} | FN: {fn}\n'
+                    f'Total Samples: {total}')
+    
+    plt.figtext(0.5, 0.02, metrics_text, ha='center', va='center', 
+                fontsize=11, fontweight='bold',
+                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+    
+    plt.tight_layout(rect=[0, 0.08, 1, 1])
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"[OK] Confusion matrix saved to {save_path}")
+    plt.close()
+    
+    return cm
 
 
 def calculate_simple_eer_accuracy(cm_scores_file, output_file=None, printout=True):
@@ -39,7 +89,21 @@ def calculate_simple_eer_accuracy(cm_scores_file, output_file=None, printout=Tru
                         '(Equal error rate)\\n'.format(eer_cm * 100))
             f_res.write('\\tAccuracy\\t= {:8.4f} % '
                         '(Classification accuracy at EER threshold)\\n'.format(accuracy))
+            f_res.write('\\tThreshold\\t= {:8.6f} '
+                        '(EER optimal threshold)\\n'.format(cm_threshold))
         os.system(f"cat {output_file}")
+        
+        # Generate confusion matrix
+        # Create true labels and predictions based on threshold
+        y_true = np.concatenate([np.zeros(len(spoof_cm)), np.ones(len(bona_cm))])  # 0=spoof, 1=bonafide
+        all_scores = np.concatenate([spoof_cm, bona_cm])
+        y_pred = (all_scores >= cm_threshold).astype(int)  # 1 if score >= threshold (predicted real)
+        
+        # Save confusion matrix next to output file
+        output_path = Path(output_file)
+        cm_plot_path = output_path.parent / f"confusion_matrix_{output_path.stem}.png"
+        plot_confusion_matrix_eval(y_true, y_pred, cm_plot_path, cm_threshold, 
+                                   eer_cm * 100, accuracy)
     
     return eer_cm * 100, accuracy
 
@@ -148,10 +212,22 @@ def calculate_tDCF_EER(cm_scores_file,
                             eer_cm * 100))
             f_res.write('\tAccuracy\t= {:8.4f} % '
                         '(Classification accuracy at EER threshold)\n'.format(accuracy))
+            f_res.write('\tThreshold\t= {:8.6f} '
+                        '(EER optimal threshold)\n'.format(cm_threshold))
 
             f_res.write('\nTANDEM\n')
             f_res.write('\tmin-tDCF\t\t= {:8.9f}\n'.format(min_tDCF))
         os.system(f"cat {output_file}")
+        
+        # Generate confusion matrix
+        y_true = np.concatenate([np.zeros(len(spoof_cm)), np.ones(len(bona_cm))])  # 0=spoof, 1=bonafide
+        all_scores = np.concatenate([spoof_cm, bona_cm])
+        y_pred = (all_scores >= cm_threshold).astype(int)  # 1 if score >= threshold (predicted real)
+        
+        output_path = Path(output_file)
+        cm_plot_path = output_path.parent / f"confusion_matrix_{output_path.stem}.png"
+        plot_confusion_matrix_eval(y_true, y_pred, cm_plot_path, cm_threshold, 
+                                   eer_cm * 100, accuracy)
 
     return eer_cm * 100, min_tDCF, accuracy
 
