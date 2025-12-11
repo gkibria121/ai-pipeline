@@ -425,6 +425,7 @@ def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray,
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"✓ Confusion matrix saved to {save_path}")
+    plt.show()
     plt.close()
     
     return cm
@@ -466,6 +467,7 @@ def plot_roc_curve(y_true: np.ndarray, y_scores: np.ndarray,
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"✓ ROC curve saved to {save_path}")
+    plt.show()
     plt.close()
     
     return roc_auc, eer
@@ -505,6 +507,7 @@ def plot_accuracy_comparison(metrics_dict: Dict, save_path: Path):
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     print(f"✓ Accuracy comparison saved to {save_path}")
+    plt.show()
     plt.close()
 
 
