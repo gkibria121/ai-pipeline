@@ -227,7 +227,7 @@ Std: {np.std(feature):.4f}
     # Save figure
     output_path = save_dir / f'feature_analysis_{feature_name}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"✓ Feature analysis saved to: {output_path}")
+    print(f"[OK] Feature analysis saved to: {output_path}")
     
     # Display if requested or in notebook
     if show or IN_NOTEBOOK:
@@ -309,7 +309,7 @@ def create_feature_comparison(
     
     output_path = save_dir / 'feature_comparison.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    print(f"✓ Feature comparison saved to: {output_path}")
+    print(f"[OK] Feature comparison saved to: {output_path}")
     
     # Display if requested or in notebook
     if show or IN_NOTEBOOK:

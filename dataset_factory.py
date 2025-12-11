@@ -326,7 +326,7 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             sampled_eval_files = random.sample(eval_files, n_eval)
             eval_files = sampled_eval_files
             
-            print(f"\n📊 Using {data_subset*100:.1f}% data subset:")
+            print(f"\n[INFO] Using {data_subset*100:.1f}% data subset:")
             print(f"  Training: {len(train_files)} samples")
             print(f"  Validation: {len(dev_files)} samples")
             print(f"  Testing: {len(eval_files)} samples\n")

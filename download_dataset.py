@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import os
+import shutil
 import kagglehub
 
 
@@ -19,24 +20,23 @@ def download_asvspoof2019():
     print("=" * 70)
     
     awsaf49_asvpoof_2019_dataset_path = kagglehub.dataset_download('awsaf49/asvpoof-2019-dataset')
-    print('✓ Data source download complete.')
+    print('[OK] Data source download complete.')
     
     src = os.path.join(awsaf49_asvpoof_2019_dataset_path, "LA", "LA")  # real folder
-    dst = "./LA"  # symlink to create in current directory
+    dst = "./LA"  # directory to create in current directory
     
     # Remove old symlink or folder if exists
     if os.path.islink(dst) or os.path.exists(dst):
         if os.path.islink(dst):
             os.unlink(dst)
         else:
-            print(f"Warning: {dst} exists as a directory, not a symlink. Removing...")
-            import shutil
+            print(f"Warning: {dst} exists as a directory. Removing...")
             shutil.rmtree(dst)
     
-    # Create symlink
-    os.symlink(src, dst, target_is_directory=True)
-    print(f"✓ Symlink created: {dst} → {src}")
-    print("✓ ASVspoof 2019 dataset ready!")
+    # Copy directory (Windows compatible - no symlinks needed)
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+    print(f"[OK] Dataset copied: {dst} <- {src}")
+    print("[OK] ASVspoof 2019 dataset ready!")
 
 
 def download_fake_or_real():
@@ -48,7 +48,7 @@ def download_fake_or_real():
     mohammedabdeldayem_the_fake_or_real_dataset_path = kagglehub.dataset_download(
         'mohammedabdeldayem/the-fake-or-real-dataset'
     )
-    print('✓ Data source download complete.')
+    print('[OK] Data source download complete.')
     
     src = mohammedabdeldayem_the_fake_or_real_dataset_path
     dst = "./fake_or_real"
@@ -58,14 +58,13 @@ def download_fake_or_real():
         if os.path.islink(dst):
             os.unlink(dst)
         else:
-            print(f"Warning: {dst} exists as a directory, not a symlink. Removing...")
-            import shutil
+            print(f"Warning: {dst} exists as a directory. Removing...")
             shutil.rmtree(dst)
     
-    # Create symlink
-    os.symlink(src, dst, target_is_directory=True)
-    print(f"✓ Symlink created: {dst} → {src}")
-    print("✓ Fake-or-Real dataset ready!")
+    # Copy directory (Windows compatible - no symlinks needed)
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+    print(f"[OK] Dataset copied: {dst} <- {src}")
+    print("[OK] Fake-or-Real dataset ready!")
 
 
 def download_scenefake():
@@ -77,7 +76,7 @@ def download_scenefake():
     mohammedabdeldayem_scenefake_path = kagglehub.dataset_download(
         'mohammedabdeldayem/scenefake'
     )
-    print('✓ Data source download complete.')
+    print('[OK] Data source download complete.')
     
     src = mohammedabdeldayem_scenefake_path
     dst = "./scenefake"
@@ -87,14 +86,13 @@ def download_scenefake():
         if os.path.islink(dst):
             os.unlink(dst)
         else:
-            print(f"Warning: {dst} exists as a directory, not a symlink. Removing...")
-            import shutil
+            print(f"Warning: {dst} exists as a directory. Removing...")
             shutil.rmtree(dst)
     
-    # Create symlink
-    os.symlink(src, dst, target_is_directory=True)
-    print(f"✓ Symlink created: {dst} → {src}")
-    print("✓ SceneFake dataset ready!")
+    # Copy directory (Windows compatible - no symlinks needed)
+    shutil.copytree(src, dst, dirs_exist_ok=True)
+    print(f"[OK] Dataset copied: {dst} <- {src}")
+    print("[OK] SceneFake dataset ready!")
 
 
 def main():

@@ -193,7 +193,7 @@ def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
     plt.tight_layout()
     save_path = save_dir / "training_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Training metrics plot saved to {save_path}")
+    print(f"[OK] Training metrics plot saved to {save_path}")
     plt.close()
 
 
@@ -240,7 +240,7 @@ def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
     plt.tight_layout()
     save_path = save_dir / "final_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Final metrics plot saved to {save_path}")
+    print(f"[OK] Final metrics plot saved to {save_path}")
     plt.close()
 
 
@@ -313,7 +313,7 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
         
         f.write("=" * 70 + "\n")
     
-    print(f"✓ Metrics summary saved to {summary_file}")
+    print(f"[OK] Metrics summary saved to {summary_file}")
 
 
 def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
@@ -339,8 +339,8 @@ def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float,
     tracker = MetricsTracker(save_dir)
     tracker.metrics = metrics_dict
     tracker.save_json()
-    print(f"✓ Metrics saved to {tracker.json_file}")
-    print(f"✓ Metrics CSV saved to {tracker.csv_file}")
+    print(f"[OK] Metrics saved to {tracker.json_file}")
+    print(f"[OK] Metrics CSV saved to {tracker.csv_file}")
     
     # Create visualizations
     plot_training_metrics(metrics_dict, save_dir)
@@ -384,7 +384,7 @@ def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray,
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Confusion matrix saved to {save_path}")
+    print(f"[OK] Confusion matrix saved to {save_path}")
     plt.close()
     
     return cm
@@ -425,7 +425,7 @@ def plot_roc_curve(y_true: np.ndarray, y_scores: np.ndarray,
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ ROC curve saved to {save_path}")
+    print(f"[OK] ROC curve saved to {save_path}")
     plt.close()
     
     return roc_auc, eer
@@ -464,7 +464,7 @@ def plot_accuracy_comparison(metrics_dict: Dict, save_path: Path):
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Accuracy comparison saved to {save_path}")
+    print(f"[OK] Accuracy comparison saved to {save_path}")
     plt.close()
 
 
@@ -492,7 +492,7 @@ def create_classification_report(y_true: np.ndarray, y_pred: np.ndarray,
         f.write(report)
         f.write("\n" + "=" * 70 + "\n")
     
-    print(f"✓ Classification report saved to {save_path}")
+    print(f"[OK] Classification report saved to {save_path}")
     return report
 
 
@@ -512,7 +512,7 @@ def generate_prediction_visualizations(y_true: np.ndarray, y_pred: np.ndarray,
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
     
-    print(f"\n📊 Generating {split_name} visualizations...")
+    print(f"\n[INFO] Generating {split_name} visualizations...")
     
     # Confusion Matrix
     cm_path = save_dir / f"confusion_matrix_{split_name}.png"
@@ -549,7 +549,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
         f.write(" " * 25 + "FINAL TRAINING SUMMARY\n")
         f.write("=" * 80 + "\n\n")
         
-        f.write("📈 TRAINING METRICS\n")
+        f.write("[TRAINING] TRAINING METRICS\n")
         f.write("-" * 80 + "\n")
         if metrics_dict.get('train_loss'):
             f.write(f"  Initial Loss: {metrics_dict['train_loss'][0]:.5f}\n")
@@ -557,7 +557,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
             f.write(f"  Min Loss:     {min(metrics_dict['train_loss']):.5f}\n")
         f.write("\n")
         
-        f.write("📊 DEVELOPMENT SET METRICS\n")
+        f.write("[DEV] DEVELOPMENT SET METRICS\n")
         f.write("-" * 80 + "\n")
         if metrics_dict.get('dev_eer'):
             f.write(f"  Best Dev EER:     {min(metrics_dict['dev_eer']):.4f}%\n")
@@ -567,7 +567,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
                 f.write(f"  Best Dev Accuracy: {max(dev_acc_clean):.2f}%\n")
         f.write("\n")
         
-        f.write("🎯 EVALUATION SET METRICS\n")
+        f.write("[EVAL] EVALUATION SET METRICS\n")
         f.write("-" * 80 + "\n")
         if final_eval_metrics:
             if 'eer' in final_eval_metrics:
@@ -584,5 +584,5 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
     with open(summary_path, 'r') as f:
         print(f.read())
     
-    print(f"✓ Final summary saved to {summary_path}")
+    print(f"[OK] Final summary saved to {summary_path}")
 

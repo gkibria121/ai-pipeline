@@ -52,16 +52,16 @@ def load_metrics(metrics_path: Path) -> Optional[Dict]:
     """Load metrics from JSON file."""
     json_file = metrics_path / "metrics.json"
     if not json_file.exists():
-        print(f"❌ Metrics file not found: {json_file}")
+        print(f"[ERROR] Metrics file not found: {json_file}")
         return None
     
     try:
         with open(json_file, 'r') as f:
             metrics = json.load(f)
-        print(f"✓ Loaded metrics from {json_file}")
+        print(f"[OK] Loaded metrics from {json_file}")
         return metrics
     except Exception as e:
-        print(f"❌ Error loading metrics: {e}")
+        print(f"[ERROR] Error loading metrics: {e}")
         return None
 
 
@@ -98,7 +98,7 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved training curves to {save_path}")
+        print(f"[OK] Saved training curves to {save_path}")
     show_plot_in_notebook(fig)
 
 
@@ -130,7 +130,7 @@ def plot_accuracy_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved accuracy curves to {save_path}")
+        print(f"[OK] Saved accuracy curves to {save_path}")
     show_plot_in_notebook(fig)
 
 
@@ -159,7 +159,7 @@ def plot_eer_comparison(metrics: Dict, save_path: Path, title_suffix: str = ""):
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved EER comparison to {save_path}")
+        print(f"[OK] Saved EER comparison to {save_path}")
     show_plot_in_notebook(fig)
 
 
@@ -223,7 +223,7 @@ def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = "", sho
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved comprehensive metrics to {save_path}")
+        print(f"[OK] Saved comprehensive metrics to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
     if not (show or IN_NOTEBOOK):
@@ -315,7 +315,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
-        print(f"✓ Saved comparison plot to {save_path}")
+        print(f"[OK] Saved comparison plot to {save_path}")
     if show or IN_NOTEBOOK:
         plt.show()
     if not (show or IN_NOTEBOOK):
@@ -325,7 +325,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
 def print_summary(metrics: Dict, model_name: str = "Model"):
     """Print summary statistics."""
     print(f"\n{'='*70}")
-    print(f"📊 {model_name} Summary")
+    print(f"[SUMMARY] {model_name}")
     print(f"{'='*70}")
     
     epochs = metrics['epochs']
@@ -407,11 +407,11 @@ Examples:
     # Find all matching paths
     paths = glob(args.path)
     if not paths:
-        print(f"❌ No paths found matching: {args.path}")
+        print(f"[ERROR] No paths found matching: {args.path}")
         sys.exit(1)
     
     paths = [Path(p) for p in paths]
-    print(f"\n✓ Found {len(paths)} path(s)")
+    print(f"\n[OK] Found {len(paths)} path(s)")
     
     # Load metrics
     metrics_list = []
@@ -426,10 +426,10 @@ Examples:
             labels.append(model_name)
     
     if not metrics_list:
-        print("❌ No valid metrics found")
+        print("[ERROR] No valid metrics found")
         sys.exit(1)
     
-    print(f"\n✓ Loaded {len(metrics_list)} metric file(s)")
+    print(f"\n[OK] Loaded {len(metrics_list)} metric file(s)")
     
     # Determine if we should save files
     save_plots = args.output is not None
@@ -437,13 +437,13 @@ Examples:
     if save_plots:
         output_dir = Path(args.output)
         output_dir.mkdir(parents=True, exist_ok=True)
-        print(f"✓ Saving plots to: {output_dir}\n")
+        print(f"[OK] Saving plots to: {output_dir}\n")
     else:
         output_dir = None
         if IN_NOTEBOOK:
-            print(f"📊 Displaying plots in notebook\n")
+            print(f"[INFO] Displaying plots in notebook\n")
         else:
-            print(f"📊 Displaying plots only (use --output <dir> to save)\n")
+            print(f"[INFO] Displaying plots only (use --output <dir> to save)\n")
     
     # Generate visualizations
     if len(metrics_list) == 1:
@@ -465,7 +465,7 @@ Examples:
     else:
         # Multiple models
         if args.compare:
-            print(f"📊 Generating comparison plots for {len(metrics_list)} models")
+            print(f"[INFO] Generating comparison plots for {len(metrics_list)} models")
             save_path = output_dir / "model_comparison.png" if save_plots else None
             plot_comparison(metrics_list, labels, save_path)
         
@@ -489,9 +489,9 @@ Examples:
                 print_summary(metrics, label)
     
     if save_plots:
-        print(f"\n✅ All visualizations displayed and saved to: {output_dir}")
+        print(f"\n[OK] All visualizations displayed and saved to: {output_dir}")
     else:
-        print(f"\n✅ All visualizations displayed!")
+        print(f"\n[OK] All visualizations displayed!")
 
 
 if __name__ == "__main__":

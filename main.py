@@ -146,11 +146,11 @@ def main(args: argparse.Namespace) -> None:
     # Override eval_all_best if --eval_best flag is provided
     if args.eval_best:
         config["eval_all_best"] = "True"
-        print("✅ Eval on best: ENABLED (will evaluate on test set when best model found)")
+        print("[OK] Eval on best: ENABLED (will evaluate on test set when best model found)")
     elif config.get("eval_all_best", "False") == "True":
-        print("✅ Eval on best: ENABLED (from config)")
+        print("[OK] Eval on best: ENABLED (from config)")
     else:
-        print("ℹ️  Eval on best: DISABLED (use --eval_best to evaluate during training)")
+        print("[INFO] Eval on best: DISABLED (use --eval_best to evaluate during training)")
     
     # Override model_path if eval_model_weights is provided via command line
     if args.eval_model_weights is not None:
@@ -165,21 +165,21 @@ def main(args: argparse.Namespace) -> None:
     # Set random_noise in config
     if args.random_noise:
         config["random_noise"] = True
-        print("✅ Random augmentation: ENABLED (RIR, MUSAN-style noise, pitch shift, time stretch, SpecAugment)")
+        print("[OK] Random augmentation: ENABLED (RIR, MUSAN-style noise, pitch shift, time stretch, SpecAugment)")
     else:
         config["random_noise"] = False
-        print("⚠️  Random augmentation: DISABLED (use --random_noise for better generalization)")
+        print("[WARN] Random augmentation: DISABLED (use --random_noise for better generalization)")
 
     # Set weight averaging in config
     if args.weight_avg:
         config["weight_avg"] = True
-        print("✅ Weight averaging (SWA): ENABLED")
+        print("[OK] Weight averaging (SWA): ENABLED")
     else:
         config["weight_avg"] = config.get("weight_avg", True)  # Default to True
         if config["weight_avg"]:
-            print("✅ Weight averaging (SWA): ENABLED (default)")
+            print("[OK] Weight averaging (SWA): ENABLED (default)")
         else:
-            print("⚠️  Weight averaging (SWA): DISABLED")
+            print("[WARN] Weight averaging (SWA): DISABLED")
 
     # make experiment reproducible
     set_seed(args.seed, config)
@@ -278,10 +278,10 @@ def main(args: argparse.Namespace) -> None:
                 sr=16000
             )
         else:
-            print(f"⚠️  No sample audio found in {database_path}")
+            print(f"[WARN] No sample audio found in {database_path}")
             print(f"   Looking for *.{file_ext} files in training directory")
     except Exception as e:
-        print(f"⚠️  Could not generate feature analysis: {e}")
+        print(f"[WARN] Could not generate feature analysis: {e}")
         import traceback
         traceback.print_exc()
 
@@ -329,7 +329,7 @@ def main(args: argparse.Namespace) -> None:
     if not BF16_NATIVE_SUPPORTED:
         # torch.compile is very slow on T4/V100 and can hang - disable it
         if use_compile:
-            print("⚠️  Disabling torch.compile on this GPU (T4/V100 have slow compilation)")
+            print("[WARN] Disabling torch.compile on this GPU (T4/V100 have slow compilation)")
         use_compile = False  # Force disable on older GPUs
     
     if hasattr(torch, 'compile') and use_compile:
@@ -348,8 +348,8 @@ def main(args: argparse.Namespace) -> None:
     print(f"  Model:            {model_config.get('architecture', 'Unknown')}")
     print(f"  Dataset:          {dataset_name} (Type {dataset_type})")
     print(f"  Feature:          {feature_name} (Type {feature_type})")
-    print(f"  Augmentation:     {'✅ ENABLED' if config.get('random_noise', False) else '❌ DISABLED'}")
-    print(f"  Weight Avg (SWA): {'✅ ENABLED' if config.get('weight_avg', True) else '❌ DISABLED'}")
+    print(f"  Augmentation:     {'[YES] ENABLED' if config.get('random_noise', False) else '[NO] DISABLED'}")
+    print(f"  Weight Avg (SWA): {'[YES] ENABLED' if config.get('weight_avg', True) else '[NO] DISABLED'}")
     print(f"  Epochs:           {config['num_epochs']}")
     print(f"  Batch Size:       {config['batch_size']}")
     print(f"{'='*60}\n")
@@ -568,16 +568,16 @@ def main(args: argparse.Namespace) -> None:
     print("=" * 80)
     
     # Collect predictions for all splits
-    print("\n📊 Collecting predictions for visualization...")
+    print("\n[INFO] Collecting predictions for visualization...")
     
     # Development set predictions
-    print("\n🔍 Development Set:")
+    print("\n[INFO] Development Set:")
     dev_y_true, dev_y_pred, dev_y_scores = collect_predictions(dev_loader, model, device)
     dev_metrics = generate_prediction_visualizations(
         dev_y_true, dev_y_pred, dev_y_scores, metric_path, split_name="dev")
     
     # Evaluation set predictions
-    print("\n🔍 Evaluation Set:")
+    print("\n[INFO] Evaluation Set:")
     eval_y_true, eval_y_pred, eval_y_scores = collect_predictions(eval_loader, model, device)
     eval_metrics = generate_prediction_visualizations(
         eval_y_true, eval_y_pred, eval_y_scores, metric_path, split_name="eval")
@@ -597,7 +597,7 @@ def main(args: argparse.Namespace) -> None:
     # Display comprehensive summary
     display_final_summary(metrics_tracker.get_metrics(), final_eval_metrics, metric_path)
     
-    print("\n✅ All visualizations generated successfully!")
+    print("\n[OK] All visualizations generated successfully!")
     print("=" * 80 + "\n")
     
     if best_eval_tdcf is not None:
