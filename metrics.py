@@ -121,13 +121,14 @@ class MetricsTracker:
         return self.metrics
 
 
-def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
+def plot_training_metrics(metrics_dict: Dict, save_dir: Path, dataset_type: int = 1):
     """
     Plot training and validation metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         save_dir: Directory to save plots
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -164,13 +165,25 @@ def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
     ax.grid(True, alpha=0.3)
     ax.legend()
     
-    # Plot 3: Development t-DCF
+    # Plot 3: Development t-DCF (only for ASVspoof2019) or Accuracy
     ax = axes[1, 0]
-    ax.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
-    ax.plot(epochs, best_dev_tdcf, 'r--', linewidth=2, label='Best Dev t-DCF')
-    ax.set_xlabel('Epoch', fontsize=11)
-    ax.set_ylabel('t-DCF', fontsize=11)
-    ax.set_title('Tandem Detection Cost Function (t-DCF)', fontsize=12, fontweight='bold')
+    if dataset_type == 1:
+        ax.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
+        ax.plot(epochs, best_dev_tdcf, 'r--', linewidth=2, label='Best Dev t-DCF')
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel('t-DCF', fontsize=11)
+        ax.set_title('Tandem Detection Cost Function (t-DCF)', fontsize=12, fontweight='bold')
+    else:
+        # Show accuracy instead for non-ASVspoof datasets
+        dev_acc = metrics_dict.get('dev_acc', [])
+        if dev_acc:
+            ax.plot(epochs, dev_acc, 'orange', marker='o', linewidth=2, markersize=4, label='Dev Accuracy')
+            if dev_acc:
+                best_acc = max([x for x in dev_acc if not np.isnan(x)])
+                ax.axhline(y=best_acc, color='r', linestyle='--', linewidth=2, label=f'Best: {best_acc:.2f}%')
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel('Accuracy (%)', fontsize=11)
+        ax.set_title('Development Accuracy', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.legend()
     
@@ -193,19 +206,21 @@ def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
     plt.tight_layout()
     save_path = save_dir / "training_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Training metrics plot saved to {save_path}")
+    print(f"[OK] Training metrics plot saved to {save_path}")
     plt.close()
 
 
-def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, save_dir: Path):
+def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, save_dir: Path, 
+                       dataset_type: int = 1):
     """
     Create a summary plot of final metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save plots
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -213,6 +228,7 @@ def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
     epochs = metrics_dict['epochs']
     dev_eer = metrics_dict['dev_eer']
     dev_tdcf = metrics_dict['dev_tdcf']
+    dev_acc = metrics_dict.get('dev_acc', [])
     
     # Create summary figure
     fig = plt.figure(figsize=(14, 5))
@@ -227,34 +243,45 @@ def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
     ax1.grid(True, alpha=0.3)
     ax1.legend(fontsize=11)
     
-    # Plot 2: Best t-DCF over time
+    # Plot 2: t-DCF for ASVspoof2019, Accuracy for others
     ax2 = plt.subplot(1, 2, 2)
-    ax2.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
-    ax2.axhline(y=final_tdcf, color='r', linestyle='--', linewidth=2, label=f'Final t-DCF: {final_tdcf:.5f}')
-    ax2.set_xlabel('Epoch', fontsize=12)
-    ax2.set_ylabel('t-DCF', fontsize=12)
-    ax2.set_title('Final Tandem Detection Cost Function (t-DCF)', fontsize=13, fontweight='bold')
+    if dataset_type == 1 and final_tdcf is not None:
+        ax2.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
+        ax2.axhline(y=final_tdcf, color='r', linestyle='--', linewidth=2, label=f'Final t-DCF: {final_tdcf:.5f}')
+        ax2.set_xlabel('Epoch', fontsize=12)
+        ax2.set_ylabel('t-DCF', fontsize=12)
+        ax2.set_title('Final Tandem Detection Cost Function (t-DCF)', fontsize=13, fontweight='bold')
+    else:
+        # Show accuracy for non-ASVspoof datasets
+        if dev_acc:
+            ax2.plot(epochs, dev_acc, 'orange', marker='o', linewidth=2, markersize=4, label='Dev Accuracy')
+            best_acc = max([x for x in dev_acc if not np.isnan(x)])
+            ax2.axhline(y=best_acc, color='r', linestyle='--', linewidth=2, label=f'Best Accuracy: {best_acc:.2f}%')
+        ax2.set_xlabel('Epoch', fontsize=12)
+        ax2.set_ylabel('Accuracy (%)', fontsize=12)
+        ax2.set_title('Development Accuracy', fontsize=13, fontweight='bold')
     ax2.grid(True, alpha=0.3)
     ax2.legend(fontsize=11)
     
     plt.tight_layout()
     save_path = save_dir / "final_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Final metrics plot saved to {save_path}")
+    print(f"[OK] Final metrics plot saved to {save_path}")
     plt.close()
 
 
 def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
-                          save_dir: Path, config: Dict = None):
+                          save_dir: Path, config: Dict = None, dataset_type: int = 1):
     """
     Create a text summary of metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save summary
         config: Configuration dictionary (optional)
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -265,6 +292,7 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
     train_loss = metrics_dict['train_loss']
     dev_eer = metrics_dict['dev_eer']
     dev_tdcf = metrics_dict['dev_tdcf']
+    dev_acc = metrics_dict.get('dev_acc', [])
     best_dev_eer = metrics_dict['best_dev_eer']
     best_dev_tdcf = metrics_dict['best_dev_tdcf']
     
@@ -285,7 +313,9 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
         f.write("FINAL RESULTS\n")
         f.write("-" * 70 + "\n")
         f.write(f"Final EER: {final_eer:.4f}%\n")
-        f.write(f"Final t-DCF: {final_tdcf:.6f}\n")
+        # Only show t-DCF for ASVspoof2019 dataset
+        if dataset_type == 1 and final_tdcf is not None:
+            f.write(f"Final t-DCF: {final_tdcf:.6f}\n")
         f.write("\n")
         
         f.write("BEST DEVELOPMENT METRICS\n")
@@ -295,10 +325,17 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
             best_eer_val = best_dev_eer[best_eer_idx]
             f.write(f"Best Dev EER: {best_eer_val:.4f}% (Epoch {epochs[best_eer_idx]})\n")
         
-        if best_dev_tdcf:
+        # Only show t-DCF for ASVspoof2019 dataset
+        if dataset_type == 1 and best_dev_tdcf:
             best_tdcf_idx = np.nanargmin(best_dev_tdcf)
             best_tdcf_val = best_dev_tdcf[best_tdcf_idx]
             f.write(f"Best Dev t-DCF: {best_tdcf_val:.6f} (Epoch {epochs[best_tdcf_idx]})\n")
+        
+        # Show best accuracy for non-ASVspoof datasets
+        if dataset_type != 1 and dev_acc:
+            dev_acc_clean = [x for x in dev_acc if not np.isnan(x)]
+            if dev_acc_clean:
+                f.write(f"Best Dev Accuracy: {max(dev_acc_clean):.2f}%\n")
         f.write("\n")
         
         f.write("TRAINING STATISTICS\n")
@@ -308,25 +345,28 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
         f.write(f"Final Train Loss: {train_loss[-1]:.5f}\n")
         f.write(f"Min Train Loss: {np.min(train_loss):.5f}\n")
         f.write(f"Average Dev EER: {np.mean(dev_eer):.4f}%\n")
-        f.write(f"Average Dev t-DCF: {np.mean(dev_tdcf):.6f}\n")
+        # Only show t-DCF stats for ASVspoof2019 dataset
+        if dataset_type == 1:
+            f.write(f"Average Dev t-DCF: {np.mean(dev_tdcf):.6f}\n")
         f.write("\n")
         
         f.write("=" * 70 + "\n")
     
-    print(f"✓ Metrics summary saved to {summary_file}")
+    print(f"[OK] Metrics summary saved to {summary_file}")
 
 
 def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
-                     save_dir: Path, config: Dict = None):
+                     save_dir: Path, config: Dict = None, dataset_type: int = 1):
     """
     Save and visualize all metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save all metrics and plots
         config: Configuration dictionary (optional)
+        dataset_type: Dataset type (1=ASVspoof2019, 2=Fake-or-Real, 3=SceneFake)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -339,13 +379,13 @@ def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float,
     tracker = MetricsTracker(save_dir)
     tracker.metrics = metrics_dict
     tracker.save_json()
-    print(f"✓ Metrics saved to {tracker.json_file}")
-    print(f"✓ Metrics CSV saved to {tracker.csv_file}")
+    print(f"[OK] Metrics saved to {tracker.json_file}")
+    print(f"[OK] Metrics CSV saved to {tracker.csv_file}")
     
-    # Create visualizations
-    plot_training_metrics(metrics_dict, save_dir)
-    plot_final_metrics(metrics_dict, final_eer, final_tdcf, save_dir)
-    create_metrics_summary(metrics_dict, final_eer, final_tdcf, save_dir, config)
+    # Create visualizations (pass dataset_type for conditional t-DCF display)
+    plot_training_metrics(metrics_dict, save_dir, dataset_type=dataset_type)
+    plot_final_metrics(metrics_dict, final_eer, final_tdcf, save_dir, dataset_type=dataset_type)
+    create_metrics_summary(metrics_dict, final_eer, final_tdcf, save_dir, config, dataset_type=dataset_type)
     
     print("=" * 70 + "\n")
 
@@ -532,7 +572,7 @@ def generate_prediction_visualizations(y_true: np.ndarray, y_pred: np.ndarray,
 
 
 def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict, 
-                         save_dir: Path):
+                         save_dir: Path, dataset_type: int = 1):
     """
     Display and save final training summary with all metrics.
     
@@ -540,6 +580,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
         metrics_dict: Dictionary containing training metrics
         final_eval_metrics: Dictionary with final evaluation metrics
         save_dir: Directory to save summary
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     summary_path = save_dir / "final_summary.txt"
@@ -549,7 +590,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
         f.write(" " * 25 + "FINAL TRAINING SUMMARY\n")
         f.write("=" * 80 + "\n\n")
         
-        f.write("📈 TRAINING METRICS\n")
+        f.write("[TRAINING] TRAINING METRICS\n")
         f.write("-" * 80 + "\n")
         if metrics_dict.get('train_loss'):
             f.write(f"  Initial Loss: {metrics_dict['train_loss'][0]:.5f}\n")
@@ -557,7 +598,7 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
             f.write(f"  Min Loss:     {min(metrics_dict['train_loss']):.5f}\n")
         f.write("\n")
         
-        f.write("📊 DEVELOPMENT SET METRICS\n")
+        f.write("[DEV] DEVELOPMENT SET METRICS\n")
         f.write("-" * 80 + "\n")
         if metrics_dict.get('dev_eer'):
             f.write(f"  Best Dev EER:     {min(metrics_dict['dev_eer']):.4f}%\n")
@@ -565,9 +606,14 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
             dev_acc_clean = [x for x in metrics_dict['dev_acc'] if not np.isnan(x)]
             if dev_acc_clean:
                 f.write(f"  Best Dev Accuracy: {max(dev_acc_clean):.2f}%\n")
+        # Show t-DCF only for ASVspoof2019
+        if dataset_type == 1 and metrics_dict.get('dev_tdcf'):
+            dev_tdcf_clean = [x for x in metrics_dict['dev_tdcf'] if not np.isnan(x) and x > 0]
+            if dev_tdcf_clean:
+                f.write(f"  Best Dev t-DCF:   {min(dev_tdcf_clean):.6f}\n")
         f.write("\n")
         
-        f.write("🎯 EVALUATION SET METRICS\n")
+        f.write("[EVAL] EVALUATION SET METRICS\n")
         f.write("-" * 80 + "\n")
         if final_eval_metrics:
             if 'eer' in final_eval_metrics:
@@ -584,5 +630,5 @@ def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict,
     with open(summary_path, 'r') as f:
         print(f.read())
     
-    print(f"✓ Final summary saved to {summary_path}")
+    print(f"[OK] Final summary saved to {summary_path}")
 
