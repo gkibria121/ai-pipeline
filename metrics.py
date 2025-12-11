@@ -536,6 +536,79 @@ def create_classification_report(y_true: np.ndarray, y_pred: np.ndarray,
     return report
 
 
+def print_classification_metrics(y_true: np.ndarray, y_pred: np.ndarray, 
+                                  y_scores: np.ndarray, split_name: str = "eval"):
+    """
+    Print detailed classification metrics to console.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels  
+        y_scores: Prediction scores
+        split_name: Name of the data split
+    """
+    from sklearn.metrics import precision_score, recall_score, f1_score
+    
+    labels = ['Fake/Spoof', 'Real/Bonafide']
+    cm = confusion_matrix(y_true, y_pred)
+    
+    # Extract metrics
+    tn, fp, fn, tp = cm.ravel()
+    total = np.sum(cm)
+    accuracy = 100 * (tp + tn) / total
+    
+    # Calculate precision, recall, F1 for each class
+    precision = precision_score(y_true, y_pred, average=None, zero_division=0)
+    recall = recall_score(y_true, y_pred, average=None, zero_division=0)
+    f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
+    
+    # Calculate macro averages
+    precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
+    
+    # Calculate ROC AUC and EER
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    roc_auc_val = auc(fpr, tpr)
+    eer_idx = np.nanargmin(np.abs(fpr - (1 - tpr)))
+    eer_val = fpr[eer_idx]
+    
+    # Print detailed metrics as text
+    print("\n" + "=" * 70)
+    print(f"  {split_name.upper()} SET - CLASSIFICATION METRICS")
+    print("=" * 70)
+    
+    print(f"\n  Accuracy: {accuracy:.2f}%  |  ROC AUC: {roc_auc_val:.4f}  |  EER: {eer_val*100:.2f}%")
+    
+    print("\n" + "-" * 70)
+    print("  CONFUSION MATRIX")
+    print("-" * 70)
+    print(f"\n  {'':>22} {'Predicted':^25}")
+    print(f"  {'':>22} {'Fake/Spoof':>12} {'Real/Bonafide':>12}")
+    print(f"  {'Actual Fake/Spoof':>22} {tn:>12} {fp:>12}")
+    print(f"  {'Actual Real/Bonafide':>22} {fn:>12} {tp:>12}")
+    
+    print("\n" + "-" * 70)
+    print("  PRECISION / RECALL / F1-SCORE")
+    print("-" * 70)
+    print(f"\n  {'Class':<20} {'Precision':>12} {'Recall':>12} {'F1-Score':>12} {'Support':>10}")
+    print("  " + "-" * 66)
+    print(f"  {'Fake/Spoof':<20} {precision[0]:>12.4f} {recall[0]:>12.4f} {f1[0]:>12.4f} {tn+fp:>10}")
+    print(f"  {'Real/Bonafide':<20} {precision[1]:>12.4f} {recall[1]:>12.4f} {f1[1]:>12.4f} {fn+tp:>10}")
+    print("  " + "-" * 66)
+    print(f"  {'Macro Avg':<20} {precision_macro:>12.4f} {recall_macro:>12.4f} {f1_macro:>12.4f} {total:>10}")
+    
+    print("\n" + "-" * 70)
+    print("  DETAILED COUNTS")
+    print("-" * 70)
+    print(f"  True Positives (TP):  {tp:>8}  (Real correctly classified as Real)")
+    print(f"  True Negatives (TN):  {tn:>8}  (Fake correctly classified as Fake)")
+    print(f"  False Positives (FP): {fp:>8}  (Fake incorrectly classified as Real)")
+    print(f"  False Negatives (FN): {fn:>8}  (Real incorrectly classified as Fake)")
+    print(f"  Total Samples:        {total:>8}")
+    print("=" * 70 + "\n")
+
+
 def generate_prediction_visualizations(y_true: np.ndarray, y_pred: np.ndarray, 
                                        y_scores: np.ndarray, save_dir: Path,
                                        split_name: str = "eval"):
@@ -567,6 +640,9 @@ def generate_prediction_visualizations(y_true: np.ndarray, y_pred: np.ndarray,
     # Classification Report
     report_path = save_dir / f"classification_report_{split_name}.txt"
     create_classification_report(y_true, y_pred, report_path)
+    
+    # Print detailed metrics as text to console
+    print_classification_metrics(y_true, y_pred, y_scores, split_name)
     
     return {'roc_auc': roc_auc, 'eer': eer}
 
