@@ -10,6 +10,7 @@ import seaborn as sns
 def plot_confusion_matrix_eval(y_true, y_pred, save_path, threshold, eer, accuracy):
     """
     Plot and save confusion matrix for evaluation results.
+    Also prints confusion matrix, precision, recall, and F1-score as text.
     
     Args:
         y_true: True labels (0=spoof/fake, 1=bonafide/real)
@@ -19,11 +20,62 @@ def plot_confusion_matrix_eval(y_true, y_pred, save_path, threshold, eer, accura
         eer: Equal Error Rate
         accuracy: Accuracy at EER threshold
     """
-    from sklearn.metrics import confusion_matrix
+    from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, classification_report
     
     labels = ['Fake/Spoof', 'Real/Bonafide']
     cm = confusion_matrix(y_true, y_pred)
     
+    # Extract metrics
+    tn, fp, fn, tp = cm.ravel()
+    total = np.sum(cm)
+    
+    # Calculate precision, recall, F1 for each class
+    precision = precision_score(y_true, y_pred, average=None, zero_division=0)
+    recall = recall_score(y_true, y_pred, average=None, zero_division=0)
+    f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
+    
+    # Calculate macro and weighted averages
+    precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
+    
+    # Print detailed metrics as text
+    print("\n" + "="*60)
+    print("EVALUATION METRICS REPORT")
+    print("="*60)
+    print(f"\nEER Threshold: {threshold:.6f}")
+    print(f"EER: {eer:.2f}%")
+    print(f"Accuracy: {accuracy:.2f}%")
+    
+    print("\n" + "-"*60)
+    print("CONFUSION MATRIX")
+    print("-"*60)
+    print(f"\n{'':>20} {'Predicted':^25}")
+    print(f"{'':>20} {'Fake/Spoof':>12} {'Real/Bonafide':>12}")
+    print(f"{'Actual Fake/Spoof':>20} {tn:>12} {fp:>12}")
+    print(f"{'Actual Real/Bonafide':>20} {fn:>12} {tp:>12}")
+    
+    print("\n" + "-"*60)
+    print("CLASSIFICATION METRICS")
+    print("-"*60)
+    print(f"\n{'Class':<20} {'Precision':>12} {'Recall':>12} {'F1-Score':>12} {'Support':>12}")
+    print("-"*60)
+    print(f"{'Fake/Spoof':<20} {precision[0]:>12.4f} {recall[0]:>12.4f} {f1[0]:>12.4f} {tn+fp:>12}")
+    print(f"{'Real/Bonafide':<20} {precision[1]:>12.4f} {recall[1]:>12.4f} {f1[1]:>12.4f} {fn+tp:>12}")
+    print("-"*60)
+    print(f"{'Macro Avg':<20} {precision_macro:>12.4f} {recall_macro:>12.4f} {f1_macro:>12.4f} {total:>12}")
+    
+    print("\n" + "-"*60)
+    print("DETAILED COUNTS")
+    print("-"*60)
+    print(f"True Positives (TP):  {tp:>8} (Real correctly classified as Real)")
+    print(f"True Negatives (TN):  {tn:>8} (Fake correctly classified as Fake)")
+    print(f"False Positives (FP): {fp:>8} (Fake incorrectly classified as Real)")
+    print(f"False Negatives (FN): {fn:>8} (Real incorrectly classified as Fake)")
+    print(f"Total Samples:        {total:>8}")
+    print("="*60 + "\n")
+    
+    # Plot confusion matrix
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
                 xticklabels=labels, yticklabels=labels,
@@ -35,9 +87,6 @@ def plot_confusion_matrix_eval(y_true, y_pred, save_path, threshold, eer, accura
     plt.xlabel('Predicted Label', fontsize=12)
     
     # Add metrics text below
-    total = np.sum(cm)
-    tn, fp, fn, tp = cm.ravel()
-    
     metrics_text = (f'EER: {eer:.2f}% | Accuracy: {accuracy:.2f}%\n'
                     f'TP: {tp} | TN: {tn} | FP: {fp} | FN: {fn}\n'
                     f'Total Samples: {total}')
