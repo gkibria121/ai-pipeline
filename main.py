@@ -583,13 +583,21 @@ def main(args: argparse.Namespace) -> None:
     
     # Development set predictions
     print("\n[INFO] Development Set:")
-    dev_y_true, dev_y_pred, dev_y_scores = collect_predictions(dev_loader, model, device)
+    dev_y_true, dev_y_scores = collect_predictions(dev_loader, model, device)
+    # Calculate EER threshold for dev set
+    dev_eer_threshold = compute_eer_threshold(dev_y_true, dev_y_scores)
+    dev_y_pred = (dev_y_scores >= dev_eer_threshold).astype(int)
+    print(f"[INFO] Dev EER threshold: {dev_eer_threshold:.4f}")
     dev_metrics = generate_prediction_visualizations(
         dev_y_true, dev_y_pred, dev_y_scores, metric_path, split_name="dev")
     
     # Evaluation set predictions
     print("\n[INFO] Evaluation Set:")
-    eval_y_true, eval_y_pred, eval_y_scores = collect_predictions(eval_loader, model, device)
+    eval_y_true, eval_y_scores = collect_predictions(eval_loader, model, device)
+    # Calculate EER threshold for eval set
+    eval_eer_threshold = compute_eer_threshold(eval_y_true, eval_y_scores)
+    eval_y_pred = (eval_y_scores >= eval_eer_threshold).astype(int)
+    print(f"[INFO] Eval EER threshold: {eval_eer_threshold:.4f}")
     eval_metrics = generate_prediction_visualizations(
         eval_y_true, eval_y_pred, eval_y_scores, metric_path, split_name="eval")
     
@@ -822,18 +830,47 @@ def produce_evaluation_file_simple(
     print("Scores saved to {}".format(save_path))
 
 
-def collect_predictions(data_loader: DataLoader, model, device: torch.device):
+def compute_eer_threshold(y_true: np.ndarray, y_scores: np.ndarray) -> float:
+    """
+    Compute the EER (Equal Error Rate) threshold from true labels and scores.
+    
+    Args:
+        y_true: True labels (0=fake, 1=real)
+        y_scores: Prediction scores (probability of real class)
+    
+    Returns:
+        threshold: The EER-optimal threshold
+    """
+    from sklearn.metrics import roc_curve
+    
+    # Get ROC curve
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+    
+    # Find EER point (where FPR = 1 - TPR, i.e., FPR = FNR)
+    fnr = 1 - tpr
+    eer_idx = np.nanargmin(np.abs(fpr - fnr))
+    eer_threshold = thresholds[eer_idx]
+    
+    return eer_threshold
+
+
+def collect_predictions(data_loader: DataLoader, model, device: torch.device, threshold: float = None):
     """
     Collect predictions, scores, and true labels for visualization.
     
+    Args:
+        data_loader: DataLoader for the dataset
+        model: The model to use for predictions
+        device: Device to run inference on
+        threshold: Optional threshold for predictions. If None, returns scores only
+                   and predictions will be computed later using EER threshold.
+    
     Returns:
         y_true: True labels (0=fake, 1=real)
-        y_pred: Predicted labels (0=fake, 1=real)
-        y_scores: Prediction scores (probabilities for real class)
+        y_scores: Prediction scores (raw logits for real class - same as evaluation file)
     """
     model.eval()
     y_true_list = []
-    y_pred_list = []
     y_scores_list = []
     
     # Use torch.inference_mode for fastest inference
@@ -855,17 +892,17 @@ def collect_predictions(data_loader: DataLoader, model, device: torch.device):
                     batch_y = np.array([1 if "/real/" in str(fn) else 0 for fn in batch_info])
                 
                 _, batch_out = model(batch_x)
-                # Get probabilities using softmax
-                batch_probs = torch.softmax(batch_out, dim=1)
-                batch_scores = batch_probs[:, 1].cpu().numpy()  # Probability of real class
-                batch_pred = torch.argmax(batch_out, dim=1).cpu().numpy()
+                # Use raw logits for real class (same as produce_evaluation_file_simple)
+                batch_scores = batch_out[:, 1].cpu().numpy()
                 
                 y_true_list.extend(batch_y)
-                y_pred_list.extend(batch_pred)
                 y_scores_list.extend(batch_scores)
                 pbar.update(1)
     
-    return np.array(y_true_list), np.array(y_pred_list), np.array(y_scores_list)
+    y_true = np.array(y_true_list)
+    y_scores = np.array(y_scores_list)
+    
+    return y_true, y_scores
 
 
 def train_epoch(
