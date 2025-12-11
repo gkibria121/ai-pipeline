@@ -139,9 +139,18 @@ def main(args: argparse.Namespace) -> None:
         track = None
     
     if "eval_all_best" not in config:
-        config["eval_all_best"] = "True"
+        config["eval_all_best"] = "False"  # Default to False, use --eval_best to enable
     if "freq_aug" not in config:
         config["freq_aug"] = "False"
+    
+    # Override eval_all_best if --eval_best flag is provided
+    if args.eval_best:
+        config["eval_all_best"] = "True"
+        print("✅ Eval on best: ENABLED (will evaluate on test set when best model found)")
+    elif config.get("eval_all_best", "False") == "True":
+        print("✅ Eval on best: ENABLED (from config)")
+    else:
+        print("ℹ️  Eval on best: DISABLED (use --eval_best to evaluate during training)")
     
     # Override model_path if eval_model_weights is provided via command line
     if args.eval_model_weights is not None:
@@ -156,16 +165,21 @@ def main(args: argparse.Namespace) -> None:
     # Set random_noise in config
     if args.random_noise:
         config["random_noise"] = True
-        print("Random augmentation enabled (RIR, MUSAN-style noise, pitch shift, time stretch, etc.)")
+        print("✅ Random augmentation: ENABLED (RIR, MUSAN-style noise, pitch shift, time stretch, SpecAugment)")
     else:
         config["random_noise"] = False
+        print("⚠️  Random augmentation: DISABLED (use --random_noise for better generalization)")
 
     # Set weight averaging in config
     if args.weight_avg:
         config["weight_avg"] = True
-        print("Weight averaging (SWA) enabled for final model")
+        print("✅ Weight averaging (SWA): ENABLED")
     else:
         config["weight_avg"] = config.get("weight_avg", True)  # Default to True
+        if config["weight_avg"]:
+            print("✅ Weight averaging (SWA): ENABLED (default)")
+        else:
+            print("⚠️  Weight averaging (SWA): DISABLED")
 
     # make experiment reproducible
     set_seed(args.seed, config)
@@ -328,6 +342,18 @@ def main(args: argparse.Namespace) -> None:
             print(f"Model compilation failed (will use eager mode): {e}")
 
     # define dataloaders
+    print(f"\n{'='*60}")
+    print(f"TRAINING CONFIGURATION SUMMARY")
+    print(f"{'='*60}")
+    print(f"  Model:            {model_config.get('architecture', 'Unknown')}")
+    print(f"  Dataset:          {dataset_name} (Type {dataset_type})")
+    print(f"  Feature:          {feature_name} (Type {feature_type})")
+    print(f"  Augmentation:     {'✅ ENABLED' if config.get('random_noise', False) else '❌ DISABLED'}")
+    print(f"  Weight Avg (SWA): {'✅ ENABLED' if config.get('weight_avg', True) else '❌ DISABLED'}")
+    print(f"  Epochs:           {config['num_epochs']}")
+    print(f"  Batch Size:       {config['batch_size']}")
+    print(f"{'='*60}\n")
+    
     if dataset_type == 1:
         trn_loader, dev_loader, eval_loader = get_loader(
             database_path, args.seed, config)
@@ -463,11 +489,20 @@ def main(args: argparse.Namespace) -> None:
                     print(log_text)
                     f_log.write(log_text + "\n")
 
-            # Update SWA if enabled
+            # Update SWA if enabled (on best model)
             if use_weight_avg and optimizer_swa is not None:
-                print("Saving epoch {} for SWA (weight averaging)".format(epoch))
+                print("Saving epoch {} for SWA (weight averaging - best model)".format(epoch))
                 optimizer_swa.update_swa()
                 n_swa_update += 1
+        
+        # Also update SWA on later epochs even if not best (for better averaging)
+        # This ensures SWA gets multiple snapshots for proper weight averaging
+        elif use_weight_avg and optimizer_swa is not None and epoch > config["num_epochs"] // 2:
+            # Update SWA in second half of training regardless of dev EER
+            print("Saving epoch {} for SWA (weight averaging - late epoch)".format(epoch))
+            optimizer_swa.update_swa()
+            n_swa_update += 1
+            
         writer.add_scalar("best_dev_eer", best_dev_eer, epoch)
         writer.add_scalar("best_dev_tdcf", best_dev_tdcf, epoch)
         
@@ -957,6 +992,9 @@ if __name__ == "__main__":
                         type=float,
                         default=1.0,
                         help="percentage of data to use from each split (0.0-1.0, default: 1.0 for full dataset)")
+    parser.add_argument("--eval_best",
+                        action="store_true",
+                        help="evaluate on test set whenever a new best model is found during training")
     parser.add_argument(
         "--eval",
         action="store_true",
