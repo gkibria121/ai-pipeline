@@ -601,16 +601,18 @@ def main(args: argparse.Namespace) -> None:
     eval_metrics = generate_prediction_visualizations(
         eval_y_true, eval_y_pred, eval_y_scores, metric_path, split_name="eval")
     
+    # Calculate accuracy from collected predictions (matches confusion matrix)
+    eval_accuracy_from_preds = 100 * np.sum(eval_y_true == eval_y_pred) / len(eval_y_true)
+    
     # Plot accuracy comparison
     accuracy_plot_path = metric_path / "accuracy_comparison.png"
     plot_accuracy_comparison(metrics_tracker.get_metrics(), accuracy_plot_path)
     
-    # Use EER-optimal threshold accuracy (same as evaluate_model reports)
-    # This accuracy is the meaningful one - at EER threshold
+    # Use metrics from collected predictions (consistent with confusion matrix and classification report)
     final_eval_metrics = {
         'eer': eval_metrics['eer'],
         'roc_auc': eval_metrics['roc_auc'],
-        'accuracy': best_eval_acc  # Use EER-optimal accuracy from evaluate_model
+        'accuracy': eval_accuracy_from_preds  # Use accuracy from collected predictions
     }
     
     # Display comprehensive summary (pass dataset_type for conditional t-DCF display)
@@ -622,9 +624,9 @@ def main(args: argparse.Namespace) -> None:
     
     if best_eval_tdcf is not None:
         print("Exp FIN. EER: {:.3f}, min t-DCF: {:.5f}, Accuracy: {:.2f}%".format(
-            best_eval_eer, best_eval_tdcf, best_eval_acc))
+            best_eval_eer, best_eval_tdcf, eval_accuracy_from_preds))
     else:
-        print("Exp FIN. EER: {:.3f}, Accuracy: {:.2f}%".format(best_eval_eer, best_eval_acc))
+        print("Exp FIN. EER: {:.3f}, Accuracy: {:.2f}%".format(best_eval_eer, eval_accuracy_from_preds))
 
 
 def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_file):

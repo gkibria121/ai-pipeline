@@ -535,6 +535,13 @@ def create_classification_report(y_true: np.ndarray, y_pred: np.ndarray,
         f.write(report)
         f.write("\n" + "=" * 70 + "\n")
     
+    # Also print to console
+    print("\n" + "=" * 70)
+    print("CLASSIFICATION REPORT")
+    print("=" * 70 + "\n")
+    print(report)
+    print("=" * 70)
+    
     print(f"✓ Classification report saved to {save_path}")
     return report
 
