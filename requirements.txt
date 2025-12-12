@@ -1,6 +1,11 @@
-torch>=1.6.0
+torch 
 torchcontrib
 numpy
 soundfile
 tqdm
 librosa
+kagglehub
+matplotlib
+tensorboard
+seaborn
+pandas

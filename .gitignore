@@ -1,6 +1,7 @@
 # etc
 _*
 .*
+!.dockerignore
 exp_result/ 
 depreciated/
 LA/
@@ -8,7 +9,7 @@ notebook.ipynb
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *$py.class
-
+venv
 # C extensions
 *.so
 

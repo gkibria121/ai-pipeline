@@ -5,14 +5,17 @@ Metrics tracking, saving, and visualization module for ASVspoof detection.
 import json
 import csv
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
+import seaborn as sns
 
 # Set style for better-looking plots
 plt.style.use('seaborn-v0_8-darkgrid')
+sns.set_palette("husl")
 
 
 class MetricsTracker:
@@ -52,8 +55,8 @@ class MetricsTracker:
         if not self.csv_file.exists():
             with open(self.csv_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['Epoch', 'Train_Loss', 'Dev_EER', 'Dev_tDCF', 'Dev_Acc',
-                                'Eval_EER', 'Eval_tDCF', 'Eval_Acc', 'Best_Dev_EER', 'Best_Dev_tDCF'])
+                writer.writerow(['epoch', 'train_loss', 'dev_eer', 'dev_tdcf', 'dev_acc',
+                                'eval_eer', 'eval_tdcf', 'eval_acc', 'best_dev_eer', 'best_dev_tdcf'])
     
     def add_epoch(self, epoch: int, train_loss: float, dev_eer: float, 
                   dev_tdcf: float, dev_acc: float, eval_eer: Optional[float] = None, 
@@ -118,13 +121,14 @@ class MetricsTracker:
         return self.metrics
 
 
-def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
+def plot_training_metrics(metrics_dict: Dict, save_dir: Path, dataset_type: int = 1):
     """
     Plot training and validation metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         save_dir: Directory to save plots
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -161,13 +165,25 @@ def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
     ax.grid(True, alpha=0.3)
     ax.legend()
     
-    # Plot 3: Development t-DCF
+    # Plot 3: Development t-DCF (only for ASVspoof2019) or Accuracy
     ax = axes[1, 0]
-    ax.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
-    ax.plot(epochs, best_dev_tdcf, 'r--', linewidth=2, label='Best Dev t-DCF')
-    ax.set_xlabel('Epoch', fontsize=11)
-    ax.set_ylabel('t-DCF', fontsize=11)
-    ax.set_title('Tandem Detection Cost Function (t-DCF)', fontsize=12, fontweight='bold')
+    if dataset_type == 1:
+        ax.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
+        ax.plot(epochs, best_dev_tdcf, 'r--', linewidth=2, label='Best Dev t-DCF')
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel('t-DCF', fontsize=11)
+        ax.set_title('Tandem Detection Cost Function (t-DCF)', fontsize=12, fontweight='bold')
+    else:
+        # Show accuracy instead for non-ASVspoof datasets
+        dev_acc = metrics_dict.get('dev_acc', [])
+        if dev_acc:
+            ax.plot(epochs, dev_acc, 'orange', marker='o', linewidth=2, markersize=4, label='Dev Accuracy')
+            if dev_acc:
+                best_acc = max([x for x in dev_acc if not np.isnan(x)])
+                ax.axhline(y=best_acc, color='r', linestyle='--', linewidth=2, label=f'Best: {best_acc:.2f}%')
+        ax.set_xlabel('Epoch', fontsize=11)
+        ax.set_ylabel('Accuracy (%)', fontsize=11)
+        ax.set_title('Development Accuracy', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
     ax.legend()
     
@@ -190,19 +206,21 @@ def plot_training_metrics(metrics_dict: Dict, save_dir: Path):
     plt.tight_layout()
     save_path = save_dir / "training_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Training metrics plot saved to {save_path}")
+    print(f"[OK] Training metrics plot saved to {save_path}")
     plt.close()
 
 
-def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, save_dir: Path):
+def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, save_dir: Path, 
+                       dataset_type: int = 1):
     """
     Create a summary plot of final metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save plots
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -210,6 +228,7 @@ def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
     epochs = metrics_dict['epochs']
     dev_eer = metrics_dict['dev_eer']
     dev_tdcf = metrics_dict['dev_tdcf']
+    dev_acc = metrics_dict.get('dev_acc', [])
     
     # Create summary figure
     fig = plt.figure(figsize=(14, 5))
@@ -224,34 +243,45 @@ def plot_final_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
     ax1.grid(True, alpha=0.3)
     ax1.legend(fontsize=11)
     
-    # Plot 2: Best t-DCF over time
+    # Plot 2: t-DCF for ASVspoof2019, Accuracy for others
     ax2 = plt.subplot(1, 2, 2)
-    ax2.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
-    ax2.axhline(y=final_tdcf, color='r', linestyle='--', linewidth=2, label=f'Final t-DCF: {final_tdcf:.5f}')
-    ax2.set_xlabel('Epoch', fontsize=12)
-    ax2.set_ylabel('t-DCF', fontsize=12)
-    ax2.set_title('Final Tandem Detection Cost Function (t-DCF)', fontsize=13, fontweight='bold')
+    if dataset_type == 1 and final_tdcf is not None:
+        ax2.plot(epochs, dev_tdcf, 'orange', marker='o', linewidth=2, markersize=4, label='Dev t-DCF')
+        ax2.axhline(y=final_tdcf, color='r', linestyle='--', linewidth=2, label=f'Final t-DCF: {final_tdcf:.5f}')
+        ax2.set_xlabel('Epoch', fontsize=12)
+        ax2.set_ylabel('t-DCF', fontsize=12)
+        ax2.set_title('Final Tandem Detection Cost Function (t-DCF)', fontsize=13, fontweight='bold')
+    else:
+        # Show accuracy for non-ASVspoof datasets
+        if dev_acc:
+            ax2.plot(epochs, dev_acc, 'orange', marker='o', linewidth=2, markersize=4, label='Dev Accuracy')
+            best_acc = max([x for x in dev_acc if not np.isnan(x)])
+            ax2.axhline(y=best_acc, color='r', linestyle='--', linewidth=2, label=f'Best Accuracy: {best_acc:.2f}%')
+        ax2.set_xlabel('Epoch', fontsize=12)
+        ax2.set_ylabel('Accuracy (%)', fontsize=12)
+        ax2.set_title('Development Accuracy', fontsize=13, fontweight='bold')
     ax2.grid(True, alpha=0.3)
     ax2.legend(fontsize=11)
     
     plt.tight_layout()
     save_path = save_dir / "final_metrics.png"
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    print(f"✓ Final metrics plot saved to {save_path}")
+    print(f"[OK] Final metrics plot saved to {save_path}")
     plt.close()
 
 
 def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
-                          save_dir: Path, config: Dict = None):
+                          save_dir: Path, config: Dict = None, dataset_type: int = 1):
     """
     Create a text summary of metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save summary
         config: Configuration dictionary (optional)
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -262,6 +292,7 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
     train_loss = metrics_dict['train_loss']
     dev_eer = metrics_dict['dev_eer']
     dev_tdcf = metrics_dict['dev_tdcf']
+    dev_acc = metrics_dict.get('dev_acc', [])
     best_dev_eer = metrics_dict['best_dev_eer']
     best_dev_tdcf = metrics_dict['best_dev_tdcf']
     
@@ -282,7 +313,9 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
         f.write("FINAL RESULTS\n")
         f.write("-" * 70 + "\n")
         f.write(f"Final EER: {final_eer:.4f}%\n")
-        f.write(f"Final t-DCF: {final_tdcf:.6f}\n")
+        # Only show t-DCF for ASVspoof2019 dataset
+        if dataset_type == 1 and final_tdcf is not None:
+            f.write(f"Final t-DCF: {final_tdcf:.6f}\n")
         f.write("\n")
         
         f.write("BEST DEVELOPMENT METRICS\n")
@@ -292,10 +325,17 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
             best_eer_val = best_dev_eer[best_eer_idx]
             f.write(f"Best Dev EER: {best_eer_val:.4f}% (Epoch {epochs[best_eer_idx]})\n")
         
-        if best_dev_tdcf:
+        # Only show t-DCF for ASVspoof2019 dataset
+        if dataset_type == 1 and best_dev_tdcf:
             best_tdcf_idx = np.nanargmin(best_dev_tdcf)
             best_tdcf_val = best_dev_tdcf[best_tdcf_idx]
             f.write(f"Best Dev t-DCF: {best_tdcf_val:.6f} (Epoch {epochs[best_tdcf_idx]})\n")
+        
+        # Show best accuracy for non-ASVspoof datasets
+        if dataset_type != 1 and dev_acc:
+            dev_acc_clean = [x for x in dev_acc if not np.isnan(x)]
+            if dev_acc_clean:
+                f.write(f"Best Dev Accuracy: {max(dev_acc_clean):.2f}%\n")
         f.write("\n")
         
         f.write("TRAINING STATISTICS\n")
@@ -305,25 +345,28 @@ def create_metrics_summary(metrics_dict: Dict, final_eer: float, final_tdcf: flo
         f.write(f"Final Train Loss: {train_loss[-1]:.5f}\n")
         f.write(f"Min Train Loss: {np.min(train_loss):.5f}\n")
         f.write(f"Average Dev EER: {np.mean(dev_eer):.4f}%\n")
-        f.write(f"Average Dev t-DCF: {np.mean(dev_tdcf):.6f}\n")
+        # Only show t-DCF stats for ASVspoof2019 dataset
+        if dataset_type == 1:
+            f.write(f"Average Dev t-DCF: {np.mean(dev_tdcf):.6f}\n")
         f.write("\n")
         
         f.write("=" * 70 + "\n")
     
-    print(f"✓ Metrics summary saved to {summary_file}")
+    print(f"[OK] Metrics summary saved to {summary_file}")
 
 
 def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float, 
-                     save_dir: Path, config: Dict = None):
+                     save_dir: Path, config: Dict = None, dataset_type: int = 1):
     """
     Save and visualize all metrics.
     
     Args:
         metrics_dict: Dictionary containing metrics
         final_eer: Final EER value
-        final_tdcf: Final t-DCF value
+        final_tdcf: Final t-DCF value (None for non-ASVspoof datasets)
         save_dir: Directory to save all metrics and plots
         config: Configuration dictionary (optional)
+        dataset_type: Dataset type (1=ASVspoof2019, 2=Fake-or-Real, 3=SceneFake)
     """
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -336,12 +379,342 @@ def save_all_metrics(metrics_dict: Dict, final_eer: float, final_tdcf: float,
     tracker = MetricsTracker(save_dir)
     tracker.metrics = metrics_dict
     tracker.save_json()
-    print(f"✓ Metrics saved to {tracker.json_file}")
-    print(f"✓ Metrics CSV saved to {tracker.csv_file}")
+    print(f"[OK] Metrics saved to {tracker.json_file}")
+    print(f"[OK] Metrics CSV saved to {tracker.csv_file}")
     
-    # Create visualizations
-    plot_training_metrics(metrics_dict, save_dir)
-    plot_final_metrics(metrics_dict, final_eer, final_tdcf, save_dir)
-    create_metrics_summary(metrics_dict, final_eer, final_tdcf, save_dir, config)
+    # Create visualizations (pass dataset_type for conditional t-DCF display)
+    plot_training_metrics(metrics_dict, save_dir, dataset_type=dataset_type)
+    plot_final_metrics(metrics_dict, final_eer, final_tdcf, save_dir, dataset_type=dataset_type)
+    create_metrics_summary(metrics_dict, final_eer, final_tdcf, save_dir, config, dataset_type=dataset_type)
     
     print("=" * 70 + "\n")
+
+
+def plot_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray, 
+                         save_path: Path, title: str = "Confusion Matrix",
+                         labels: List[str] = None):
+    """
+    Plot and save confusion matrix.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels
+        save_path: Path to save the plot
+        title: Plot title
+        labels: Class labels (default: ['Fake', 'Real'])
+    """
+    if labels is None:
+        labels = ['Fake/Spoof', 'Real/Bonafide']
+    
+    cm = confusion_matrix(y_true, y_pred)
+    
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                xticklabels=labels, yticklabels=labels,
+                cbar_kws={'label': 'Count'})
+    plt.title(title, fontsize=14, fontweight='bold', pad=20)
+    plt.ylabel('True Label', fontsize=12)
+    plt.xlabel('Predicted Label', fontsize=12)
+    
+    # Add accuracy text
+    accuracy = 100 * np.trace(cm) / np.sum(cm)
+    plt.text(0.5, -0.15, f'Accuracy: {accuracy:.2f}%', 
+             ha='center', va='center', transform=plt.gca().transAxes,
+             fontsize=12, fontweight='bold')
+    
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Confusion matrix saved to {save_path}")
+    plt.show()
+    plt.close()
+    
+    return cm
+
+
+def plot_roc_curve(y_true: np.ndarray, y_scores: np.ndarray, 
+                   save_path: Path, title: str = "ROC Curve"):
+    """
+    Plot and save ROC curve.
+    
+    Args:
+        y_true: True labels
+        y_scores: Prediction scores (probabilities)
+        save_path: Path to save the plot
+        title: Plot title
+    """
+    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+    roc_auc = auc(fpr, tpr)
+    
+    plt.figure(figsize=(10, 8))
+    plt.plot(fpr, tpr, color='darkorange', lw=2, 
+             label=f'ROC curve (AUC = {roc_auc:.4f})')
+    plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--', 
+             label='Random Classifier')
+    
+    # Find EER point
+    eer_idx = np.nanargmin(np.abs(fpr - (1 - tpr)))
+    eer = fpr[eer_idx]
+    plt.plot(eer, 1-eer, 'ro', markersize=10, 
+             label=f'EER = {eer*100:.2f}%')
+    
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate', fontsize=12)
+    plt.ylabel('True Positive Rate', fontsize=12)
+    plt.title(title, fontsize=14, fontweight='bold')
+    plt.legend(loc="lower right", fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✓ ROC curve saved to {save_path}")
+    plt.show()
+    plt.close()
+    
+    return roc_auc, eer
+
+
+def plot_accuracy_comparison(metrics_dict: Dict, save_path: Path):
+    """
+    Plot comparison of train, dev, and eval accuracies.
+    
+    Args:
+        metrics_dict: Dictionary containing metrics
+        save_path: Path to save the plot
+    """
+    epochs = metrics_dict['epochs']
+    dev_acc = metrics_dict.get('dev_acc', [])
+    eval_acc = metrics_dict.get('eval_acc', [])
+    
+    plt.figure(figsize=(12, 7))
+    
+    if dev_acc:
+        plt.plot(epochs, dev_acc, 'g-o', linewidth=2, markersize=5, 
+                label='Dev Accuracy', alpha=0.8)
+    
+    if eval_acc:
+        # Plot eval accuracy only for epochs where it exists
+        eval_epochs = [e for e, v in zip(epochs, eval_acc) if not np.isnan(v)]
+        eval_acc_vals = [v for v in eval_acc if not np.isnan(v)]
+        if eval_acc_vals:
+            plt.plot(eval_epochs, eval_acc_vals, 'purple', marker='s', 
+                    linewidth=2, markersize=7, label='Eval Accuracy', alpha=0.8)
+    
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy (%)', fontsize=12)
+    plt.title('Model Accuracy Over Training', fontsize=14, fontweight='bold')
+    plt.legend(fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    print(f"✓ Accuracy comparison saved to {save_path}")
+    plt.show()
+    plt.close()
+
+
+def create_classification_report(y_true: np.ndarray, y_pred: np.ndarray, 
+                                 save_path: Path, 
+                                 labels: List[str] = None):
+    """
+    Create and save detailed classification report.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels
+        save_path: Path to save the report
+        labels: Class labels
+    """
+    if labels is None:
+        labels = ['Fake/Spoof', 'Real/Bonafide']
+    
+    report = classification_report(y_true, y_pred, target_names=labels, digits=4)
+    
+    with open(save_path, 'w') as f:
+        f.write("=" * 70 + "\n")
+        f.write("CLASSIFICATION REPORT\n")
+        f.write("=" * 70 + "\n\n")
+        f.write(report)
+        f.write("\n" + "=" * 70 + "\n")
+    
+    # Also print to console
+    print("\n" + "=" * 70)
+    print("CLASSIFICATION REPORT")
+    print("=" * 70 + "\n")
+    print(report)
+    print("=" * 70)
+    
+    print(f"✓ Classification report saved to {save_path}")
+    return report
+
+
+def print_classification_metrics(y_true: np.ndarray, y_pred: np.ndarray, 
+                                  y_scores: np.ndarray, split_name: str = "eval"):
+    """
+    Print detailed classification metrics to console.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels  
+        y_scores: Prediction scores
+        split_name: Name of the data split
+    """
+    from sklearn.metrics import precision_score, recall_score, f1_score
+    
+    labels = ['Fake/Spoof', 'Real/Bonafide']
+    cm = confusion_matrix(y_true, y_pred)
+    
+    # Extract metrics
+    tn, fp, fn, tp = cm.ravel()
+    total = np.sum(cm)
+    accuracy = 100 * (tp + tn) / total
+    
+    # Calculate precision, recall, F1 for each class
+    precision = precision_score(y_true, y_pred, average=None, zero_division=0)
+    recall = recall_score(y_true, y_pred, average=None, zero_division=0)
+    f1 = f1_score(y_true, y_pred, average=None, zero_division=0)
+    
+    # Calculate macro averages
+    precision_macro = precision_score(y_true, y_pred, average='macro', zero_division=0)
+    recall_macro = recall_score(y_true, y_pred, average='macro', zero_division=0)
+    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
+    
+    # Calculate ROC AUC and EER
+    fpr, tpr, _ = roc_curve(y_true, y_scores)
+    roc_auc_val = auc(fpr, tpr)
+    eer_idx = np.nanargmin(np.abs(fpr - (1 - tpr)))
+    eer_val = fpr[eer_idx]
+    
+    # Print detailed metrics as text
+    print("\n" + "=" * 70)
+    print(f"  {split_name.upper()} SET - CLASSIFICATION METRICS")
+    print("=" * 70)
+    
+    print(f"\n  Accuracy: {accuracy:.2f}%  |  ROC AUC: {roc_auc_val:.4f}  |  EER: {eer_val*100:.2f}%")
+    
+    print("\n" + "-" * 70)
+    print("  CONFUSION MATRIX")
+    print("-" * 70)
+    print(f"\n  {'':>22} {'Predicted':^25}")
+    print(f"  {'':>22} {'Fake/Spoof':>12} {'Real/Bonafide':>12}")
+    print(f"  {'Actual Fake/Spoof':>22} {tn:>12} {fp:>12}")
+    print(f"  {'Actual Real/Bonafide':>22} {fn:>12} {tp:>12}")
+    
+    print("\n" + "-" * 70)
+    print("  PRECISION / RECALL / F1-SCORE")
+    print("-" * 70)
+    print(f"\n  {'Class':<20} {'Precision':>12} {'Recall':>12} {'F1-Score':>12} {'Support':>10}")
+    print("  " + "-" * 66)
+    print(f"  {'Fake/Spoof':<20} {precision[0]:>12.4f} {recall[0]:>12.4f} {f1[0]:>12.4f} {tn+fp:>10}")
+    print(f"  {'Real/Bonafide':<20} {precision[1]:>12.4f} {recall[1]:>12.4f} {f1[1]:>12.4f} {fn+tp:>10}")
+    print("  " + "-" * 66)
+    print(f"  {'Macro Avg':<20} {precision_macro:>12.4f} {recall_macro:>12.4f} {f1_macro:>12.4f} {total:>10}")
+    
+    print("\n" + "-" * 70)
+    print("  DETAILED COUNTS")
+    print("-" * 70)
+    print(f"  True Positives (TP):  {tp:>8}  (Real correctly classified as Real)")
+    print(f"  True Negatives (TN):  {tn:>8}  (Fake correctly classified as Fake)")
+    print(f"  False Positives (FP): {fp:>8}  (Fake incorrectly classified as Real)")
+    print(f"  False Negatives (FN): {fn:>8}  (Real incorrectly classified as Fake)")
+    print(f"  Total Samples:        {total:>8}")
+    print("=" * 70 + "\n")
+
+
+def generate_prediction_visualizations(y_true: np.ndarray, y_pred: np.ndarray, 
+                                       y_scores: np.ndarray, save_dir: Path,
+                                       split_name: str = "eval"):
+    """
+    Generate comprehensive prediction visualizations.
+    
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels
+        y_scores: Prediction scores
+        save_dir: Directory to save visualizations
+        split_name: Name of the data split (e.g., 'train', 'dev', 'eval')
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"\n📊 Generating {split_name} visualizations...")
+    
+    # Confusion Matrix
+    cm_path = save_dir / f"confusion_matrix_{split_name}.png"
+    plot_confusion_matrix(y_true, y_pred, cm_path, 
+                         title=f"Confusion Matrix - {split_name.capitalize()}")
+    
+    # ROC Curve
+    roc_path = save_dir / f"roc_curve_{split_name}.png"
+    roc_auc, eer = plot_roc_curve(y_true, y_scores, roc_path,
+                                   title=f"ROC Curve - {split_name.capitalize()}")
+    
+    # Classification Report
+    report_path = save_dir / f"classification_report_{split_name}.txt"
+    create_classification_report(y_true, y_pred, report_path)
+    
+    # Print detailed metrics as text to console
+    print_classification_metrics(y_true, y_pred, y_scores, split_name)
+    
+    return {'roc_auc': roc_auc, 'eer': eer}
+
+
+def display_final_summary(metrics_dict: Dict, final_eval_metrics: Dict, 
+                         save_dir: Path, dataset_type: int = 1):
+    """
+    Display and save final training summary with all metrics.
+    
+    Args:
+        metrics_dict: Dictionary containing training metrics
+        final_eval_metrics: Dictionary with final evaluation metrics
+        save_dir: Directory to save summary
+        dataset_type: Dataset type (1=ASVspoof2019, others don't show t-DCF)
+    """
+    save_dir = Path(save_dir)
+    summary_path = save_dir / "final_summary.txt"
+    
+    with open(summary_path, 'w') as f:
+        f.write("\n" + "=" * 80 + "\n")
+        f.write(" " * 25 + "FINAL TRAINING SUMMARY\n")
+        f.write("=" * 80 + "\n\n")
+        
+        f.write("[TRAINING] TRAINING METRICS\n")
+        f.write("-" * 80 + "\n")
+        if metrics_dict.get('train_loss'):
+            f.write(f"  Initial Loss: {metrics_dict['train_loss'][0]:.5f}\n")
+            f.write(f"  Final Loss:   {metrics_dict['train_loss'][-1]:.5f}\n")
+            f.write(f"  Min Loss:     {min(metrics_dict['train_loss']):.5f}\n")
+        f.write("\n")
+        
+        f.write("[DEV] DEVELOPMENT SET METRICS\n")
+        f.write("-" * 80 + "\n")
+        if metrics_dict.get('dev_eer'):
+            f.write(f"  Best Dev EER:     {min(metrics_dict['dev_eer']):.4f}%\n")
+        if metrics_dict.get('dev_acc'):
+            dev_acc_clean = [x for x in metrics_dict['dev_acc'] if not np.isnan(x)]
+            if dev_acc_clean:
+                f.write(f"  Best Dev Accuracy: {max(dev_acc_clean):.2f}%\n")
+        # Show t-DCF only for ASVspoof2019
+        if dataset_type == 1 and metrics_dict.get('dev_tdcf'):
+            dev_tdcf_clean = [x for x in metrics_dict['dev_tdcf'] if not np.isnan(x) and x > 0]
+            if dev_tdcf_clean:
+                f.write(f"  Best Dev t-DCF:   {min(dev_tdcf_clean):.6f}\n")
+        f.write("\n")
+        
+        f.write("[EVAL] EVALUATION SET METRICS\n")
+        f.write("-" * 80 + "\n")
+        if final_eval_metrics:
+            if 'eer' in final_eval_metrics:
+                f.write(f"  EER:       {final_eval_metrics['eer']*100:.4f}%\n")
+            if 'roc_auc' in final_eval_metrics:
+                f.write(f"  ROC AUC:   {final_eval_metrics['roc_auc']:.4f}\n")
+            if 'accuracy' in final_eval_metrics:
+                f.write(f"  Accuracy:  {final_eval_metrics['accuracy']:.2f}%\n")
+        f.write("\n")
+        
+        f.write("=" * 80 + "\n")
+    
+    # Also print to console
+    with open(summary_path, 'r') as f:
+        print(f.read())
+    
+    print(f"[OK] Final summary saved to {summary_path}")
+

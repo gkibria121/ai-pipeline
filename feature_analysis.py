@@ -6,9 +6,22 @@ Provides insights into different audio feature representations.
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-matplotlib.use('Agg')
 from pathlib import Path
 import soundfile as sf
+
+# Detect if running in notebook
+try:
+    get_ipython()
+    IN_NOTEBOOK = True
+    # Use inline backend for notebooks
+    try:
+        get_ipython().run_line_magic('matplotlib', 'inline')
+    except:
+        pass
+except NameError:
+    IN_NOTEBOOK = False
+    # Use Agg backend for scripts (non-interactive)
+    matplotlib.use('Agg')
 
 try:
     import librosa
@@ -22,7 +35,8 @@ def analyze_and_visualize_features(
     audio_file: str,
     feature_type: int,
     save_dir: Path,
-    sr: int = 16000
+    sr: int = 16000,
+    show: bool = True
 ):
     """
     Analyze and visualize audio features.
@@ -32,6 +46,7 @@ def analyze_and_visualize_features(
         feature_type: Type of feature (0-4)
         save_dir: Directory to save visualizations
         sr: Sample rate
+        show: Whether to display plots (default True)
     """
     from data_utils import extract_feature, FEATURE_TYPES
     
@@ -212,9 +227,15 @@ Std: {np.std(feature):.4f}
     # Save figure
     output_path = save_dir / f'feature_analysis_{feature_name}.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
     print(f"✓ Feature analysis saved to: {output_path}")
+    
+    # Display if requested or in notebook
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
+    
+    return output_path
     
     return output_path
 
@@ -222,7 +243,8 @@ Std: {np.std(feature):.4f}
 def create_feature_comparison(
     audio_file: str,
     save_dir: Path,
-    sr: int = 16000
+    sr: int = 16000,
+    show: bool = True
 ):
     """
     Create a comparison visualization of all feature types.
@@ -231,6 +253,7 @@ def create_feature_comparison(
         audio_file: Path to audio file
         save_dir: Directory to save visualization
         sr: Sample rate
+        show: Whether to display plots (default True)
     """
     from data_utils import extract_feature, FEATURE_TYPES
     
@@ -286,8 +309,14 @@ def create_feature_comparison(
     
     output_path = save_dir / 'feature_comparison.png'
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    
     print(f"✓ Feature comparison saved to: {output_path}")
+    
+    # Display if requested or in notebook
+    if show or IN_NOTEBOOK:
+        plt.show()
+    else:
+        plt.close()
+    
+    return output_path
     
     return output_path
