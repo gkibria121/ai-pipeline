@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: GPU Build (with CUDA support)
 # ============================================
-FROM nvidia/cuda:12.9.1-cudnn8-runtime-ubuntu22.04 AS gpu-stage
+FROM   pytorch/pytorch:2.9.1-cuda12.6-cudnn9-devel AS gpu-stage
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -32,7 +32,7 @@ CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-r
 # ============================================
 # Stage 2: CPU Build
 # ============================================
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime AS cpu-stage
+FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-runtime AS cpu-stage
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
