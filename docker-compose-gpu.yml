@@ -1,9 +1,5 @@
 services:
   jupyter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: gpu-stage # Use GPU stage
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - JUPYTER_ENABLE_LAB=yes

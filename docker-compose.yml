@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: gpu-stage # Changed to GPU
     container_name: ai-pipeline-jupyter
     ports:
       - "8888:8888"
@@ -23,7 +22,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: cpu-stage
     container_name: ai-pipeline-tensorboard
     ports:
       - "6007:6006"

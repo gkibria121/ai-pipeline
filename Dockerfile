@@ -1,40 +1,4 @@
-# ============================================
-# Stage 1: GPU Build (with CUDA support)
-# ============================================
-FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-devel AS gpu-stage
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libsndfile1 \
-    ffmpeg \
-    git \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-
-# Install PyTorch wheel built for CUDA 12.9, then other pip deps
-RUN python -m pip install --upgrade pip setuptools wheel && \
-    python -m pip install --no-cache-dir --timeout=300 \
-    --index-url https://download.pytorch.org/whl/cu129 \
-    torch torchvision torchaudio && \
-    python -m pip install --no-cache-dir \
-    -r requirements.txt && \
-    python -m pip install --no-cache-dir \
-    jupyter jupyterlab ipywidgets
-
-COPY . .
-
-EXPOSE 8888
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--ServerApp.token=''", "--ServerApp.password=''"]
-
-# ============================================
-# Stage 2: CPU Build
-# ============================================
-FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-runtime AS cpu-stage
+FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -42,40 +6,34 @@ ENV PYTHONIOENCODING=utf-8
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV TERM=xterm-256color
 ENV SHELL=/bin/bash
-ENV CUDA_VISIBLE_DEVICES=""
-ENV NVIDIA_VISIBLE_DEVICES=void
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsndfile1 \
-    ffmpeg \
-    git \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libsndfile1 \
+    ffmpeg \
+    git \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency list
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --timeout=300 --retries=5 \
-    torchcontrib \
-    numpy \
-    soundfile \
-    tqdm \
-    librosa \
-    kagglehub \
-    matplotlib \
-    tensorboard \
-    seaborn \
-    pandas \
-    jupyter \
-    jupyterlab \
-    ipywidgets
+# NOTE: The base image already provides a CUDA-enabled PyTorch build.
+# If `requirements.txt` includes `torch` or related packages, consider
+# removing those entries to avoid reinstalling a different wheel.
 
+# Install Python dependencies (do not force reinstalling torch here).
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt || true && \
+    python -m pip install --no-cache-dir jupyter jupyterlab ipywidgets
+
+# Copy project files
 COPY . .
 
-EXPOSE 8888
+# Expose Jupyter (8888) and TensorBoard (6006)
+EXPOSE 8888 6006
 
-CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--ServerApp.token=''", "--ServerApp.password=''"]
-
-FROM gpu-stage AS final
+# Ensure exp_result exists and start Jupyter Lab
+CMD ["bash", "-lc", "mkdir -p /app/exp_result && jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password=''"]
