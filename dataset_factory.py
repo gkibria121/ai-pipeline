@@ -25,6 +25,7 @@ DATASET_TYPES = {
 
 def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
+    return 0
     try:
         cpu_count = os.cpu_count() or 1
         if cpu_count <= 2:
