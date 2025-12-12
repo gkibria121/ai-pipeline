@@ -1,47 +1,32 @@
 # ============================================
 # Stage 1: GPU Build (with CUDA support)
 # ============================================
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime AS gpu-stage
+FROM nvidia/cuda:12.9.1-cudnn8-runtime-ubuntu22.04 AS gpu-stage
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONIOENCODING=utf-8
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV TERM=xterm-256color
-ENV SHELL=/bin/bash
+WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     libsndfile1 \
     ffmpeg \
     git \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 
-RUN pip install --no-cache-dir --timeout=300 --retries=5 \
-    torchcontrib \
-    numpy \
-    soundfile \
-    tqdm \
-    librosa \
-    kagglehub \
-    matplotlib \
-    tensorboard \
-    seaborn \
-    pandas \
-    jupyter \
-    jupyterlab \
-    ipywidgets
+# Install PyTorch wheel built for CUDA 12.9, then other pip deps
+RUN python -m pip install --upgrade pip setuptools wheel && \
+    python -m pip install --no-cache-dir --timeout=300 \
+    --index-url https://download.pytorch.org/whl/cu129 \
+    torch torchvision torchaudio && \
+    python -m pip install --no-cache-dir \
+    -r requirements.txt
 
 COPY . .
 
 EXPOSE 8888
-
-# Run as root (simpler for development)
 CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--ServerApp.token=''", "--ServerApp.password=''"]
 
 # ============================================
