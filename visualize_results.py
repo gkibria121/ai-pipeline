@@ -100,9 +100,7 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     ax.set_ylabel('Loss', fontsize=12)
     ax.set_title(f'Training Loss{title_suffix}', fontsize=13, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    # compact legend
-    ncol = 1 if len(labels) <= 6 else 2 if len(labels) <= 12 else 3
-    ax.legend(fontsize=8, ncol=ncol)
+    ax.legend(fontsize=9)
     
     # Development EER
     ax = axes[1]
@@ -115,7 +113,7 @@ def plot_training_curves(metrics: Dict, save_path: Path, title_suffix: str = "")
     ax.set_ylabel('EER (%)', fontsize=12)
     ax.set_title(f'Development EER{title_suffix}', fontsize=13, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, ncol=ncol)
+    ax.legend(fontsize=9)
     
     plt.tight_layout()
     if save_path:
@@ -258,6 +256,8 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     fig.suptitle('Model Comparison', fontsize=16, fontweight='bold')
     
     colors = plt.cm.tab10(np.linspace(0, 1, len(metrics_list)))
+    # Determine legend column count based on number of models
+    ncol = 1 if len(labels) <= 6 else 2 if len(labels) <= 12 else 3
     
     # Training Loss Comparison
     ax = axes[0, 0]
@@ -270,7 +270,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax.set_ylabel('Loss', fontsize=11)
     ax.set_title('Training Loss Comparison', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(fontsize=8, ncol=ncol)
     
     # Dev EER Comparison
     ax = axes[0, 1]
@@ -283,7 +283,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax.set_ylabel('EER (%)', fontsize=11)
     ax.set_title('Development EER Comparison', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(fontsize=8, ncol=ncol)
     
     # Accuracy Comparison
     ax = axes[1, 0]
@@ -298,7 +298,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax.set_ylabel('Accuracy (%)', fontsize=11)
     ax.set_title('Accuracy Comparison', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend()
+    ax.legend(fontsize=8, ncol=ncol)
     
     # Best Metrics Summary
     ax = axes[1, 1]
