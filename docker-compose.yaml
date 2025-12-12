@@ -16,22 +16,15 @@ services:
     restart: unless-stopped
     shm_size: "8gb"
 
-  # tensorboard:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #     target: cpu-stage # Use CPU stage
-  #   container_name: ai-pipeline-tensorboard
-  #   ports:
-  #     - "6007:6006"
-  #   volumes:
-  #     - ai-pipeline-data:/app/exp_result:rw
-  #   command: tensorboard --logdir=/app/exp_result --host=0.0.0.0 --port=6006
-  #   restart: unless-stopped
-# volumes:
-#   ai-pipeline-data:
-#     driver: local
-#     driver_opts:
-#       type: none
-#       o: bind
-#       device: ./
+  tensorboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cpu-stage # Use CPU stage
+    container_name: ai-pipeline-tensorboard
+    ports:
+      - "6007:6006"
+    volumes:
+      - ./exp_result:/app/exp_result:rw
+    command: tensorboard --logdir=/app/exp_result --host=0.0.0.0 --port=6006
+    restart: unless-stopped

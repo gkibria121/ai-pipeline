@@ -15,8 +15,8 @@ services:
               count: all
               capabilities: [gpu]
 
-  # tensorboard:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #     target: gpu-stage # Use GPU stage
+  tensorboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gpu-stage # Use GPU stage
