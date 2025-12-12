@@ -1,8 +1,5 @@
 services:
   jupyter:
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - JUPYTER_ENABLE_LAB=yes
     stdin_open: true
     tty: true
     deploy:
@@ -12,6 +9,26 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-pipeline-jupyter-gpu
+    ports:
+      - "8888:8888"
+      - "6006:6006"
+    volumes:
+      - .:/app
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - PYTHONUNBUFFERED=1
+      - PYTHONIOENCODING=utf-8
+      - PYTHONDONTWRITEBYTECODE=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    command: bash -lc "mkdir -p /app/exp_result && jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.iopub_data_rate_limit=100000000"
+    restart: unless-stopped
+    shm_size: "16gb"
+    ipc: host
 
   tensorboard:
     build:
@@ -19,3 +36,9 @@ services:
       dockerfile: Dockerfile
     stdin_open: true
     tty: true
+    container_name: ai-pipeline-tensorboard-gpu
+    ports:
+      - "6007:6006"
+    volumes:
+      - .:/app
+    restart: unless-stopped
