@@ -27,6 +27,7 @@ from importlib import import_module
 from pathlib import Path
 from shutil import copy
 from typing import Dict, List, Union
+import shutil
 
 import numpy as np
 import torch
@@ -425,6 +426,11 @@ def main(args: argparse.Namespace) -> None:
 
     # make directory for metric logging
     metric_path = model_tag / "metrics"
+    os.makedirs(metric_path, exist_ok=True)
+    
+    # remove previous metrics (clear only metrics folder)
+    if metric_path.exists():
+        shutil.rmtree(metric_path)
     os.makedirs(metric_path, exist_ok=True)
     
     # Initialize metrics tracker
