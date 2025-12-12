@@ -25,8 +25,13 @@ DATASET_TYPES = {
 
 def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
-    return 0
     try:
+        # If running inside a Jupyter/IPython kernel or in an environment
+        # where __main__.__spec__ is missing (common with `%run`), disable
+        # multiprocessing to avoid spawn errors on Windows.
+        import sys
+        if "ipykernel" in sys.modules or getattr(sys.modules.get("__main__"), "__spec__", None) is None:
+            return 0
         cpu_count = os.cpu_count() or 1
         if cpu_count <= 2:
             # Very limited CPU - use 0 workers (main process only)
@@ -39,6 +44,7 @@ def get_num_workers():
             return min(4, cpu_count - 1)
     except:
         return 0  # Safe default - no workers
+   
 
 
 def get_dataset_info(dataset_type: int) -> Dict:
@@ -356,7 +362,8 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
         gen.manual_seed(seed)
         
         num_workers_train = get_num_workers()
-        num_workers_eval = max(1, num_workers_train // 2)
+        # Allow zero eval workers to avoid spawning subprocesses in notebooks/Windows
+        num_workers_eval = max(0, num_workers_train // 2)
         
         train_loader = DataLoader(
             train_set,
