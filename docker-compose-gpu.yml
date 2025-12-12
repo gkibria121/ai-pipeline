@@ -30,15 +30,15 @@ services:
     shm_size: "16gb"
     ipc: host
 
-  tensorboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    stdin_open: true
-    tty: true
-    container_name: ai-pipeline-tensorboard-gpu
-    ports:
-      - "6007:6006"
-    volumes:
-      - .:/app
-    restart: unless-stopped
+  # tensorboard:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   stdin_open: true
+  #   tty: true
+  #   container_name: ai-pipeline-tensorboard-gpu
+  #   ports:
+  #     - "6007:6006"
+  #   volumes:
+  #     - .:/app
+  #   restart: unless-stopped
