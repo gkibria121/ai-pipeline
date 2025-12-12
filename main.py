@@ -286,13 +286,18 @@ def main(args: argparse.Namespace) -> None:
         traceback.print_exc()
 
     # set device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device: {}".format(device))
-    if device.type == "cpu":
-        raise ValueError("GPU not detected!")
+    if args.cpu:
+        device = torch.device("cpu")
+        print("Device: CPU (forced via --cpu flag)")
+        print("⚠️  Running on CPU - training will be significantly slower")
+    else:
+        if not torch.cuda.is_available():
+            raise ValueError("GPU not detected! Use --cpu flag to run on CPU (slower).")
+        device = torch.device("cuda")
+        print("Device: {}".format(device))
     
-    # Print GPU info and optimization status
-    if torch.cuda.is_available():
+    # Print GPU info and optimization status (only if using GPU)
+    if device.type == "cuda":
         gpu_name = torch.cuda.get_device_name(0)
         gpu_capability = torch.cuda.get_device_capability(0)
         print(f"GPU: {gpu_name} (Compute Capability: {gpu_capability[0]}.{gpu_capability[1]})")
@@ -301,12 +306,13 @@ def main(args: argparse.Namespace) -> None:
             print(f"  → Using FP16 mixed precision (BF16 requires Ampere+ GPU)")
         print(f"TF32 Enabled: {TF32_ENABLED}")
     
-    # Enable CuDNN optimizations
-    if str_to_bool(config.get("cudnn_benchmark_toggle", "True")):
-        torch.backends.cudnn.benchmark = True
-        print("CuDNN Benchmark: Enabled")
-    if str_to_bool(config.get("cudnn_deterministic_toggle", "False")):
-        torch.backends.cudnn.deterministic = True
+    # Enable CuDNN optimizations (only for GPU)
+    if device.type == "cuda":
+        if str_to_bool(config.get("cudnn_benchmark_toggle", "True")):
+            torch.backends.cudnn.benchmark = True
+            print("CuDNN Benchmark: Enabled")
+        if str_to_bool(config.get("cudnn_deterministic_toggle", "False")):
+            torch.backends.cudnn.deterministic = True
 
     # define model architecture
     model = get_model(model_config, device)
@@ -315,7 +321,11 @@ def main(args: argparse.Namespace) -> None:
     # This provides up to 30% speedup on modern GPUs for CNN models
     # Note: Can cause issues with torch.compile on older GPUs, so we disable it for non-Ampere GPUs
     use_channels_last = config.get("use_channels_last", True)
-    if not BF16_NATIVE_SUPPORTED:
+    if device.type == "cpu":
+        # channels_last optimization is GPU-specific, skip on CPU
+        use_channels_last = False
+        print("Memory Format: contiguous (CPU mode)")
+    elif not BF16_NATIVE_SUPPORTED:
         # On older GPUs (T4, V100), channels_last + torch.compile can cause cuDNN issues
         use_channels_last = False
         print("Memory Format: contiguous (channels_last disabled for GPU compatibility)")
@@ -325,8 +335,13 @@ def main(args: argparse.Namespace) -> None:
     
     # Enable torch.compile for PyTorch 2.0+ (30-50% speedup with inductor)
     # Disable on older GPUs where it causes long compilation times and compatibility issues
+    # Also disable on CPU as it provides minimal benefit
     use_compile = config.get("use_compile", True)
-    if not BF16_NATIVE_SUPPORTED:
+    if device.type == "cpu":
+        # torch.compile provides minimal benefit on CPU
+        use_compile = False
+        print("torch.compile: Disabled (CPU mode)")
+    elif not BF16_NATIVE_SUPPORTED:
         # torch.compile is very slow on T4/V100 and can hang - disable it
         if use_compile:
             print("⚠️  Disabling torch.compile on this GPU (T4/V100 have slow compilation)")
@@ -1058,4 +1073,7 @@ if __name__ == "__main__":
                         type=str,
                         default=None,
                         help="path to the model weight file (can be also given in the config file)")
+    parser.add_argument("--cpu",
+                        action="store_true",
+                        help="force CPU mode even if GPU is available (slower but works without CUDA)")
     main(parser.parse_args())
