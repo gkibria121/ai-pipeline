@@ -9,7 +9,7 @@ services:
       - "8888:8888"
       - "6006:6006"
     volumes:
-      - ./:/app
+      - ai-pipeline-data:/app
     environment:
       - JUPYTER_ENABLE_LAB=yes
       - CUDA_VISIBLE_DEVICES=""
@@ -25,6 +25,13 @@ services:
     ports:
       - "6007:6006"
     volumes:
-      - ./exp_result:/app/exp_result:rw
+      - ai-pipeline-data:/app/exp_result:rw
     command: tensorboard --logdir=/app/exp_result --host=0.0.0.0 --port=6006
     restart: unless-stopped
+volumes:
+  ai-pipeline-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./
