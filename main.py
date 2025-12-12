@@ -764,7 +764,9 @@ def get_loader(
     gen.manual_seed(seed)
     
     num_workers_train = get_num_workers()
-    num_workers_eval = max(1, num_workers_train // 2)
+    # Allow zero eval workers when running in interactive/notebook contexts
+    # to avoid spawning subprocesses on Windows where __spec__ may be missing.
+    num_workers_eval = max(0, num_workers_train // 2)
     
     trn_loader = DataLoader(train_set,
                             batch_size=config["batch_size"],
