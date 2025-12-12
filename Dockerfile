@@ -1,7 +1,7 @@
 # ============================================
 # Stage 1: GPU Build (with CUDA support)
 # ============================================
-FROM   pytorch/pytorch:2.9.1-cuda12.6-cudnn9-devel AS gpu-stage
+FROM pytorch/pytorch:2.9.1-cuda12.6-cudnn9-devel AS gpu-stage
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -22,7 +22,9 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
     --index-url https://download.pytorch.org/whl/cu129 \
     torch torchvision torchaudio && \
     python -m pip install --no-cache-dir \
-    -r requirements.txt
+    -r requirements.txt && \
+    python -m pip install --no-cache-dir \
+    jupyter jupyterlab ipywidgets
 
 COPY . .
 
