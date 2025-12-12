@@ -6,6 +6,7 @@ exp_result/
 depreciated/
 LA/
 notebook.ipynb
+fake_or_real/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *$py.class
