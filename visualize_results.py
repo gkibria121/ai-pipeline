@@ -374,7 +374,8 @@ Examples:
         '--path', 
         type=str, 
         required=True,
-        help='Path to metrics directory (supports wildcards for comparison)'
+        nargs='+',
+        help='One or more paths/patterns to metrics directories (supports wildcards)'
     )
     
     parser.add_argument(
@@ -404,13 +405,21 @@ Examples:
     
     args = parser.parse_args()
     
-    # Find all matching paths
-    paths = glob(args.path)
-    if not paths:
-        print(f"❌ No paths found matching: {args.path}")
+    # Find all matching paths (support multiple patterns or expanded globs from IPython)
+    patterns = args.path if isinstance(args.path, (list, tuple)) else [args.path]
+    found = []
+    for pat in patterns:
+        matches = glob(pat)
+        if matches:
+            found.extend(matches)
+
+    if not found:
+        print(f"❌ No paths found matching: {patterns}")
         sys.exit(1)
-    
-    paths = [Path(p) for p in paths]
+
+    # Preserve order and remove duplicates
+    unique_paths = list(dict.fromkeys(found))
+    paths = [Path(p) for p in unique_paths]
     print(f"\n✓ Found {len(paths)} path(s)")
     
     # Load metrics
