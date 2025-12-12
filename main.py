@@ -116,6 +116,7 @@ from feature_analysis import analyze_and_visualize_features
 
 def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
+    return 0
     try:
         # If running inside a Jupyter/IPython kernel or without a proper
         # module spec (as happens when using `%run`), disable multiprocessing
