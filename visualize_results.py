@@ -19,6 +19,26 @@ import matplotlib
 import seaborn as sns
 from glob import glob
 
+
+def _shorten_label(full_name: str, max_len: int = 30) -> str:
+    """Produce a compact label for plotting from the full model folder name.
+
+    Strategy:
+    - strip dataset and track prefixes (first two underscore-separated tokens)
+    - remove tokens like 'rand', 'epNN', 'bsNN', 'featN'
+    - join the remaining tokens; truncate if still too long
+    """
+    toks = full_name.split('_')
+    # drop first two tokens which are usually dataset and track
+    rest = toks[2:] if len(toks) > 2 else toks[:]
+    filtered = [t for t in rest if not (t == 'rand' or t.startswith('ep') or t.startswith('bs') or t.startswith('feat'))]
+    if not filtered:
+        filtered = rest or toks
+    short = '_'.join(filtered)
+    if len(short) > max_len:
+        return short[: max_len - 3] + '...'
+    return short
+
 # Detect if running in notebook
 try:
     from IPython.display import display, Image as IPImage
@@ -473,10 +493,12 @@ Examples:
         
     else:
         # Multiple models
-        if args.compare:
-            print(f"📊 Generating comparison plots for {len(metrics_list)} models")
-            save_path = output_dir / "model_comparison.png" if save_plots else None
-            plot_comparison(metrics_list, labels, save_path)
+            if args.compare:
+                print(f"📊 Generating comparison plots for {len(metrics_list)} models")
+                save_path = output_dir / "model_comparison.png" if save_plots else None
+                # Create shorter display labels for plotting so legends/ticks don't overlap
+                display_labels = [_shorten_label(l) for l in labels]
+                plot_comparison(metrics_list, display_labels, save_path)
         
         # Individual plots for each model
         for metrics, label in zip(metrics_list, labels):
