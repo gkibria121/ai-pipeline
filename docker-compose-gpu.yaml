@@ -1,5 +1,9 @@
 services:
   jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gpu-stage # Use GPU stage
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - JUPYTER_ENABLE_LAB=yes
@@ -10,5 +14,9 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    restart: unless-stopped
-    shm_size: "8gb"
+
+  tensorboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: gpu-stage # Use GPU stage

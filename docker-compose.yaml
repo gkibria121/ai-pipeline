@@ -3,12 +3,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: cpu-stage # Use CPU stage
     container_name: ai-pipeline-jupyter
     ports:
       - "8888:8888"
       - "6006:6006"
     volumes:
       - ./:/app
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - CUDA_VISIBLE_DEVICES=""
     restart: unless-stopped
     shm_size: "8gb"
 
@@ -16,6 +20,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: cpu-stage # Use CPU stage
     container_name: ai-pipeline-tensorboard
     ports:
       - "6007:6006"
