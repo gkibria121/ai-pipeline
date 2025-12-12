@@ -327,8 +327,10 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax2.set_ylabel('Best Accuracy (%)', fontsize=11)
     ax.set_title('Best Metrics Comparison', fontsize=12, fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels(labels, rotation=45, ha='right')
-    ax.legend(loc='upper left')
+    ax.set_xticklabels(labels, rotation=45, ha='right', fontsize=8)
+    # Make legend compact to avoid overlapping; allow multiple columns when many models
+    ncol = 1 if len(labels) <= 6 else 2 if len(labels) <= 12 else 3
+    ax.legend(loc='upper left', fontsize=8, ncol=ncol)
     ax2.legend(loc='upper right')
     ax.grid(True, alpha=0.3)
     
@@ -493,7 +495,7 @@ Examples:
         
     else:
         # Multiple models
-            if args.compare:
+        if args.compare:
                 print(f"📊 Generating comparison plots for {len(metrics_list)} models")
                 save_path = output_dir / "model_comparison.png" if save_plots else None
                 # Create shorter display labels for plotting so legends/ticks don't overlap
