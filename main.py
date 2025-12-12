@@ -47,15 +47,45 @@ warnings.filterwarnings("ignore", message=".*Not enough SMs to use max_autotune_
 # PyTorch 2.x optimizations - Use new API for TF32 control (PyTorch 2.9+)
 # Track TF32 status for printing later
 TF32_ENABLED = False
+# Prefer the new PyTorch 2.9+ API for TF32 control. If present, set it and
+# ensure any legacy "allow_tf32" flags (if present) mirror the new setting
+# to avoid mixing new and legacy APIs which causes runtime errors in
+# torch._inductor / cuBLAS checks.
 if hasattr(torch.backends.cuda.matmul, 'fp32_precision'):
-    # New PyTorch 2.9+ API - use ONLY this, don't mix with old API
+    # New PyTorch 2.9+ API - use ONLY this API to control TF32
     torch.backends.cuda.matmul.fp32_precision = 'tf32'  # or 'highest' for max precision
-    torch.backends.cudnn.conv.fp32_precision = 'tf32'
+    # cudnn conv fp32 precision setter (if available)
+    if hasattr(torch.backends.cudnn, 'conv') and hasattr(torch.backends.cudnn.conv, 'fp32_precision'):
+        torch.backends.cudnn.conv.fp32_precision = 'tf32'
     TF32_ENABLED = True
+    # Mirror legacy flags if they exist so that the global state is consistent
+    legacy_allow = True
+    if hasattr(torch.backends.cuda.matmul, 'allow_tf32'):
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = legacy_allow
+        except Exception:
+            pass
+    if hasattr(torch.backends.cudnn, 'allow_tf32'):
+        try:
+            torch.backends.cudnn.allow_tf32 = legacy_allow
+        except Exception:
+            pass
 elif hasattr(torch, 'set_float32_matmul_precision'):
     # Fallback for PyTorch 2.0-2.8
     torch.set_float32_matmul_precision('high')
     TF32_ENABLED = True
+    # Mirror legacy flags as well for consistency
+    legacy_allow = True
+    if hasattr(torch.backends.cuda.matmul, 'allow_tf32'):
+        try:
+            torch.backends.cuda.matmul.allow_tf32 = legacy_allow
+        except Exception:
+            pass
+    if hasattr(torch.backends.cudnn, 'allow_tf32'):
+        try:
+            torch.backends.cudnn.allow_tf32 = legacy_allow
+        except Exception:
+            pass
 
 # Check for BF16 support - requires compute capability 8.0+ (Ampere/Ada/Hopper)
 # T4 (7.5), V100 (7.0) don't have native BF16, only Ampere+ (A100, RTX 30xx, etc.)
