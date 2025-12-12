@@ -1,0 +1,14 @@
+services:
+  jupyter:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - JUPYTER_ENABLE_LAB=yes
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    shm_size: "8gb"

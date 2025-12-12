@@ -1,0 +1,25 @@
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-pipeline-jupyter
+    ports:
+      - "8888:8888"
+      - "6006:6006"
+    volumes:
+      - ./:/app
+    restart: unless-stopped
+    shm_size: "8gb"
+
+  tensorboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-pipeline-tensorboard
+    ports:
+      - "6007:6006"
+    volumes:
+      - ./exp_result:/app/exp_result:rw
+    command: tensorboard --logdir=/app/exp_result --host=0.0.0.0 --port=6006
+    restart: unless-stopped
