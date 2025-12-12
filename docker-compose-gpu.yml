@@ -3,6 +3,8 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - JUPYTER_ENABLE_LAB=yes
+    stdin_open: true
+    tty: true
     deploy:
       resources:
         reservations:
@@ -15,3 +17,5 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    stdin_open: true
+    tty: true
