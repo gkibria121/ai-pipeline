@@ -36,4 +36,4 @@ COPY . .
 EXPOSE 8888 6006
 
 # Ensure exp_result exists and start Jupyter Lab
-CMD ["bash", "-lc", "mkdir -p /app/exp_result && jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password=''"]
+CMD ["bash", "-lc", "mkdir -p /app/exp_result && export PYTHONFAULTHANDLER=1 TORCHDYNAMO_VERBOSE=1 TORCH_LOGS='+dynamo' && exec jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.token='' --ServerApp.password='' --ServerApp.allow_origin='*' --ServerApp.iopub_data_rate_limit=100000000 --debug --ServerApp.log_level=DEBUG"]
