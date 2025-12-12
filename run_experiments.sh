@@ -22,7 +22,7 @@ fi
 
 if [ "$1" = "full" ]; then
   echo "Running full experiment sequence (this may take a long time)..."
-  python -u main.py --config config/LCNN.conf --feature_type 1 --dataset 2 --epochs 20 --random_noise --weight_avg --eval_best --cpu --data_subset 0.01
+  python -u main.py --config config/LCNN.conf --feature_type 1 --dataset 2 --epochs 20 --random_noise --weight_avg --eval_best  
   python -u main.py --config config/LCNN_Large.conf --feature_type 1 --dataset 2 --epochs 20 --random_noise --weight_avg --eval_best
   python -u main.py --config config/SEResNet.conf --feature_type 1 --dataset 2 --epochs 15 --random_noise --weight_avg --eval_best
   python -u main.py --config config/EfficientNetB2_Attention.conf --feature_type 1 --dataset 2 --epochs 20 --random_noise --weight_avg --eval_best
