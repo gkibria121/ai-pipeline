@@ -117,6 +117,11 @@ from feature_analysis import analyze_and_visualize_features
 def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
     try:
+        # If running inside a Jupyter/IPython kernel or without a proper
+        # module spec (as happens when using `%run`), disable multiprocessing
+        # to avoid errors like "module '__main__' has no attribute '__spec__'".
+        if "ipykernel" in sys.modules or getattr(sys.modules.get("__main__"), "__spec__", None) is None:
+            return 0
         cpu_count = os.cpu_count() or 1
         if cpu_count <= 2:
             # Very limited CPU - use 0 workers (main process only)
