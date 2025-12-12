@@ -288,12 +288,15 @@ def main(args: argparse.Namespace) -> None:
         if sample_audio:
             feature_viz_dir = model_tag / "feature_analysis"
             print(f"Using sample: {Path(sample_audio).name}")
-            analyze_and_visualize_features(
-                audio_file=sample_audio,
-                feature_type=feature_type,
-                save_dir=feature_viz_dir,
-                sr=16000
-            )
+            if getattr(args, 'feature_analysis', False):
+                analyze_and_visualize_features(
+                    audio_file=sample_audio,
+                    feature_type=feature_type,
+                    save_dir=feature_viz_dir,
+                    sr=16000
+                )
+            else:
+                print("ℹ️  Feature analysis skipped (use --feature_analysis to enable)")
         else:
             print(f"⚠️  No sample audio found in {database_path}")
             print(f"   Looking for *.{file_ext} files in training directory")
@@ -1072,6 +1075,9 @@ if __name__ == "__main__":
                         default=None,
                         choices=[0, 1, 2, 3, 4],
                         help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt (default: None, uses config value)")
+    parser.add_argument("--feature_analysis",
+                        action="store_true",
+                        help="generate feature analysis visualization before training (disabled by default)")
     parser.add_argument("--random_noise",
                         action="store_true",
                         help="enable random data augmentation (RIR, MUSAN-style noise, pitch shift, time stretch, SpecAugment)")
