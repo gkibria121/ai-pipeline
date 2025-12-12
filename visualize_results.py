@@ -213,7 +213,7 @@ def plot_all_metrics(metrics: Dict, save_path: Path, title_suffix: str = "", sho
     ax.set_ylabel('EER (%)', fontsize=11)
     ax.set_title('Equal Error Rate', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, ncol=ncol)
+    ax.legend(fontsize=9)
     
     # Accuracy
     ax = axes[1, 0]
@@ -270,7 +270,7 @@ def plot_comparison(metrics_list: List[Dict], labels: List[str], save_path: Path
     ax.set_ylabel('Loss', fontsize=11)
     ax.set_title('Training Loss Comparison', fontsize=12, fontweight='bold')
     ax.grid(True, alpha=0.3)
-    ax.legend(fontsize=8, ncol=ncol)
+    ax.legend(fontsize=9)
     
     # Dev EER Comparison
     ax = axes[0, 1]
