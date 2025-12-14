@@ -610,7 +610,9 @@ def main(args: argparse.Namespace) -> None:
                              best_dev_eer, best_dev_tdcf if best_dev_tdcf is not None else 0.0)
     
     # Save all metrics and generate visualizations (pass dataset_type for conditional t-DCF display)
-    save_all_metrics(metrics_tracker.get_metrics(), best_eval_eer, best_eval_tdcf, 
+    # Use final evaluation metrics (eval_eer, eval_tdcf) so saved summaries reflect
+    # the model currently used for final evaluation (e.g., SWA when applied).
+    save_all_metrics(metrics_tracker.get_metrics(), eval_eer, eval_tdcf, 
                      metric_path, config, dataset_type=dataset_type)
     
     # Generate comprehensive visualizations
