@@ -107,7 +107,7 @@ BF16_SUPPORTED = BF16_NATIVE_SUPPORTED
 from data_utils import (Dataset_ASVspoof2019_train,
                         Dataset_ASVspoof2019_devNeval, genSpoof_list, FEATURE_TYPES)
 from dataset_factory import get_dataset_info, create_dataset_loaders, DATASET_TYPES
-from evaluation import calculate_tDCF_EER, calculate_simple_eer_accuracy
+from evaluation import calculate_tDCF_EER, calculate_simple_eer_accuracy, compute_eer
 from metrics import (MetricsTracker, save_all_metrics, generate_prediction_visualizations, 
                     display_final_summary, plot_accuracy_comparison)
 from utils import create_optimizer, seed_worker, set_seed, str_to_bool
@@ -877,27 +877,21 @@ def produce_evaluation_file_simple(
 
 
 def compute_eer_threshold(y_true: np.ndarray, y_scores: np.ndarray) -> float:
+    """Return the decision threshold that yields EER using the
+    project's canonical EER routine in `evaluation.compute_eer`.
+
+    This ensures the same thresholding logic is used for both
+    evaluation (files written by `evaluate_model`) and for the
+    visualization/classification-report code paths.
     """
-    Compute the EER (Equal Error Rate) threshold from true labels and scores.
-    
-    Args:
-        y_true: True labels (0=fake, 1=real)
-        y_scores: Prediction scores (probability of real class)
-    
-    Returns:
-        threshold: The EER-optimal threshold
-    """
-    from sklearn.metrics import roc_curve
-    
-    # Get ROC curve
-    fpr, tpr, thresholds = roc_curve(y_true, y_scores)
-    
-    # Find EER point (where FPR = 1 - TPR, i.e., FPR = FNR)
-    fnr = 1 - tpr
-    eer_idx = np.nanargmin(np.abs(fpr - fnr))
-    eer_threshold = thresholds[eer_idx]
-    
-    return eer_threshold
+    # Split scores into bona fide (real=1) and spoof (fake=0)
+    bona_cm = y_scores[y_true == 1]
+    spoof_cm = y_scores[y_true == 0]
+
+    # Delegate to the evaluation module's compute_eer to obtain
+    # the EER and its corresponding threshold (consistent logic).
+    eer_value, threshold = compute_eer(bona_cm, spoof_cm)
+    return threshold
 
 
 def collect_predictions(data_loader: DataLoader, model, device: torch.device, threshold: float = None):
