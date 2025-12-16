@@ -140,10 +140,17 @@ def main(args: argparse.Namespace) -> None:
     # Set dataset type
     dataset_type = args.dataset if args.dataset is not None else config.get("dataset_type", 1)
     dataset_info = get_dataset_info(dataset_type)
+
+    # Expose dataset_version for printing and later use
+    # Do NOT mutate args.dataset_version here; respect user's explicit choice.
+    dataset_version = getattr(args, 'dataset_version', None)
     
     # Display dataset information
     print("\n" + "="*70)
-    print(f"DATASET: {dataset_info['name']} (Type {dataset_type})")
+    if dataset_version is not None:
+        print(f"DATASET: {dataset_info['name']} (Type {dataset_type}, Version {dataset_version})")
+    else:
+        print(f"DATASET: {dataset_info['name']} (Type {dataset_type})")
     print("="*70)
     
     optim_config["epochs"] = config["num_epochs"]
@@ -208,9 +215,33 @@ def main(args: argparse.Namespace) -> None:
     if dataset_type == 1:
         database_path = Path(config.get("database_path", dataset_info["base_path"]))
         prefix_2019 = "ASVspoof2019.{}".format(track)
+    elif dataset_type == 2:
+        # Map dataset_version to actual fake_or_real subfolders (these contain training/validation/testing)
+        # Numeric mapping is: 1=for-original, 2=for-norm, 3=for-2sec, 4=for-rerec
+        version_map = {
+            1: Path("fake_or_real/for-original/for-original"),
+            2: Path("fake_or_real/for-norm/for-norm"),
+            3: Path("fake_or_real/for-2sec/for-2seconds"),
+            4: Path("fake_or_real/for-rerec/for-rerecorded"),
+        }
+
+        if dataset_version is not None:
+            sel = dataset_version
+            selected_path = version_map.get(sel)
+            if selected_path is None:
+                print(f"⚠️  Unknown --dataset_version {sel}; available: {list(version_map.keys())}. Using dataset_info base_path")
+                database_path = Path(config.get("database_path", dataset_info["base_path"]))
+            else:
+                database_path = Path(selected_path)
+        else:
+            database_path = Path(config.get("database_path", dataset_info["base_path"]))
+
+        prefix_2019 = None
     else:
         database_path = Path(dataset_info["base_path"])
         prefix_2019 = None
+
+    # ASVspoof protocol file paths (only meaningful when dataset_type == 1)
     dev_trial_path = (database_path /
                       "ASVspoof2019_{}_cm_protocols/{}.cm.dev.trl.txt".format(
                           track, prefix_2019))
@@ -1058,6 +1089,10 @@ if __name__ == "__main__":
                         default=None,
                         choices=[1, 2, 3],
                         help="dataset to use: 1=ASVspoof2019, 2=Fake-or-Real, 3=SceneFake (default: None, uses config value or 1)")
+    parser.add_argument("--dataset_version",
+                        type=int,
+                        default=None,
+                        help="(Fake-or-Real only) dataset version identifier. If omitted, defaults to 3 when base path matches known version paths.")
     parser.add_argument("--epochs",
                         type=int,
                         default=None,

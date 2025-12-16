@@ -271,10 +271,13 @@ def add_musan_style_noise(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
     """
     noise_type = np.random.choice(['babble', 'music', 'ambient'])
     
+    n_samples = waveform.shape[0]
+    n_channels = 1 if waveform.ndim == 1 else waveform.shape[1]
+
     if noise_type == 'babble':
         # Simulate babble noise (overlapping speech-like sounds)
         # Use filtered noise to simulate speech spectrum
-        noise = np.random.randn(len(waveform))
+        noise = np.random.randn(n_samples)
         # Apply bandpass filter (300-3400 Hz, speech range)
         try:
             from scipy.signal import butter, filtfilt
@@ -289,7 +292,7 @@ def add_musan_style_noise(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
         
     elif noise_type == 'music':
         # Simulate music-like noise (low frequency emphasis)
-        noise = np.random.randn(len(waveform))
+        noise = np.random.randn(n_samples)
         # Apply lowpass filter for music-like spectrum
         try:
             from scipy.signal import butter, filtfilt
@@ -303,13 +306,18 @@ def add_musan_style_noise(waveform: np.ndarray, sr: int = 16000) -> np.ndarray:
         
     else:  # ambient
         # Ambient noise (broadband with some coloring)
-        noise = np.random.randn(len(waveform))
+        noise = np.random.randn(n_samples)
         snr = np.random.uniform(15, 25)
     
+    # If waveform has multiple channels, expand noise to match channels
+    if n_channels > 1:
+        # Make noise shape (n_samples, n_channels)
+        noise = np.tile(noise[:, None], (1, n_channels))
+
     # Calculate scaling factor based on SNR
     signal_power = np.mean(waveform ** 2)
     noise_power = np.mean(noise ** 2)
-    
+
     if noise_power > 0:
         snr_linear = 10 ** (snr / 10)
         scale = np.sqrt(signal_power / (snr_linear * noise_power))
@@ -495,6 +503,13 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
     Returns:
         Feature representation as numpy array
     """
+    # If input is multi-channel (e.g., stereo), convert to mono for feature extraction
+    try:
+        if waveform is not None and hasattr(waveform, "ndim") and waveform.ndim > 1:
+            waveform = np.mean(waveform, axis=1)
+    except Exception:
+        pass
+
     if feature_type == 0:
         # Raw waveform
         return waveform
