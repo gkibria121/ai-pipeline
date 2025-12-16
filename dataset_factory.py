@@ -23,6 +23,26 @@ DATASET_TYPES = {
 }
 
 
+# Simple dataset provider registry to allow adding new dataset providers
+# without modifying the core functions (follows Open/Closed Principle).
+_DATASET_PROVIDERS = {}
+
+
+def register_dataset_provider(dataset_id: int, provider):
+    """Register a dataset provider.
+
+    provider can be either a callable that returns a dict (get_dataset_info-like)
+    or a dict directly. This allows external modules to extend supported
+    datasets without editing this file.
+    """
+    _DATASET_PROVIDERS[dataset_id] = provider
+
+
+def list_registered_datasets():
+    """Return a list of registered dataset ids."""
+    return list(_DATASET_PROVIDERS.keys())
+
+
 def get_num_workers():
     """Determine optimal number of workers based on system capabilities"""
     try:
@@ -57,6 +77,15 @@ def get_dataset_info(dataset_type: int) -> Dict:
     Returns:
         Dictionary with dataset configuration
     """
+    # First consult the registry for custom providers
+    if dataset_type in _DATASET_PROVIDERS:
+        provider = _DATASET_PROVIDERS[dataset_type]
+        try:
+            return provider() if callable(provider) else provider
+        except Exception:
+            # Fall through to built-in defaults on error
+            pass
+
     if dataset_type == 1:
         return {
             "name": "ASVspoof2019",
