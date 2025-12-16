@@ -255,9 +255,14 @@ def main(args: argparse.Namespace) -> None:
     feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
     dataset_name = DATASET_TYPES.get(dataset_type, f"DS{dataset_type}")
     
+    # Build model tag with dataset name; include version for Fake-or-Real if provided
+    ds_label = dataset_name.replace("-", "")
+    if dataset_type == 2 and dataset_version is not None:
+        ds_label = f"{ds_label}_V{dataset_version}"
+
     # Build model tag with random_noise indicator
     model_tag = "{}_{}_{}_ep{}_bs{}_feat{}".format(
-        dataset_name.replace("-", ""),
+        ds_label,
         track if track else "audio",
         os.path.splitext(os.path.basename(args.config))[0],
         config["num_epochs"], config["batch_size"], feature_type)
@@ -265,7 +270,7 @@ def main(args: argparse.Namespace) -> None:
     # Add random noise indicator to folder name if augmentation is enabled
     if config.get("random_noise", False):
         model_tag = "{}_{}_{}_rand_ep{}_bs{}_feat{}".format(
-            dataset_name.replace("-", ""),
+            ds_label,
             track if track else "audio",
             os.path.splitext(os.path.basename(args.config))[0],
             config["num_epochs"], config["batch_size"], feature_type)
@@ -422,18 +427,51 @@ def main(args: argparse.Namespace) -> None:
     
     if dataset_type == 1:
         trn_loader, dev_loader, eval_loader = get_loader(
-            database_path, args.seed, config)
+            database_path, args.seed, config, device)
     else:
-        trn_loader, dev_loader, eval_loader = create_dataset_loaders(
-            dataset_type, database_path, feature_type, 
-            config.get("random_noise", False), config["batch_size"], args.seed,
-            data_subset=args.data_subset)
+        # Inspect create_dataset_loaders signature and call with `device` only
+        # if it accepts that parameter. This avoids TypeError in environments
+        # where an older dataset_factory is present.
+        import inspect
+        try:
+            params = inspect.signature(create_dataset_loaders).parameters
+            if 'device' in params:
+                trn_loader, dev_loader, eval_loader = create_dataset_loaders(
+                    dataset_type, database_path, feature_type,
+                    config.get("random_noise", False), config["batch_size"], args.seed,
+                    data_subset=args.data_subset, device=device)
+            else:
+                trn_loader, dev_loader, eval_loader = create_dataset_loaders(
+                    dataset_type, database_path, feature_type,
+                    config.get("random_noise", False), config["batch_size"], args.seed,
+                    data_subset=args.data_subset)
+        except Exception:
+            # Fallback to calling without device if signature inspection fails
+            trn_loader, dev_loader, eval_loader = create_dataset_loaders(
+                dataset_type, database_path, feature_type,
+                config.get("random_noise", False), config["batch_size"], args.seed,
+                data_subset=args.data_subset)
 
     # evaluates pretrained model and exit script
     if args.eval:
-        model.load_state_dict(
-            torch.load(config["model_path"], map_location=device))
-        print("Model loaded : {}".format(config["model_path"]))
+        # Choose which weights to load for evaluation.
+        # Priority: 1) `--eval_model_weights` CLI arg 2) SWA weights if present 3) `config["model_path"]`.
+        model_path_to_load = None
+        if args.eval_model_weights is not None:
+            model_path_to_load = args.eval_model_weights
+        else:
+            swa_candidate = model_save_path / "swa.pth"
+            if swa_candidate.exists():
+                model_path_to_load = swa_candidate
+                print(f"Loading SWA weights for evaluation: {swa_candidate}")
+            else:
+                model_path_to_load = config.get("model_path", None)
+
+        if model_path_to_load is None:
+            raise ValueError("No model weights provided for evaluation (use --eval_model_weights or set config['model_path']).")
+
+        model.load_state_dict(torch.load(model_path_to_load, map_location=device))
+        print("Model loaded : {}".format(model_path_to_load))
         print("Start evaluation...")
         if dataset_type == 1:
             produce_evaluation_file(eval_loader, model, device,
@@ -460,12 +498,12 @@ def main(args: argparse.Namespace) -> None:
     else:
         optimizer_swa = None
 
-    best_dev_eer = 1.
-    best_eval_eer = 100.
+    best_dev_eer = 100.0
+    best_eval_eer = 100.0
     best_eval_acc = 0.0
     # Only track t-DCF for ASVspoof2019 dataset
     if dataset_type == 1:
-        best_dev_tdcf = 0.05
+        best_dev_tdcf = 1.0
         best_eval_tdcf = 1.
     else:
         best_dev_tdcf = None
@@ -616,6 +654,11 @@ def main(args: argparse.Namespace) -> None:
 
     torch.save(model.state_dict(),
                model_save_path / "swa.pth")
+    # Informative message so users know SWA weights were produced
+    if use_weight_avg and n_swa_update > 0:
+        print(f"[OK] SWA weights saved to {model_save_path / 'swa.pth'} (n_snapshots={n_swa_update})")
+    else:
+        print(f"[INFO] SWA weights file written (but no SWA snapshots collected) to {model_save_path / 'swa.pth'}")
 
     if eval_eer <= best_eval_eer:
         best_eval_eer = eval_eer
@@ -744,9 +787,10 @@ def get_model(model_config: Dict, device: torch.device):
 
 
 def get_loader(
-        database_path: str,
-        seed: int,
-        config: dict) -> List[torch.utils.data.DataLoader]:
+    database_path: str,
+    seed: int,
+    config: dict,
+    device: torch.device) -> List[torch.utils.data.DataLoader]:
     """Make PyTorch DataLoaders for train / developement / evaluation"""
     track = config["track"]
     feature_type = config.get("feature_type", 0)
@@ -786,11 +830,14 @@ def get_loader(
     # to avoid spawning subprocesses on Windows where __spec__ may be missing.
     num_workers_eval = max(0, num_workers_train // 2)
     
+    # pin_memory should be True when using CUDA for faster host->device transfer
+    pin_memory_flag = True if device is not None and device.type == "cuda" else False
+
     trn_loader = DataLoader(train_set,
                             batch_size=config["batch_size"],
                             shuffle=True,
                             drop_last=True,
-                            pin_memory=True,
+                            pin_memory=pin_memory_flag,
                             num_workers=num_workers_train,
                             persistent_workers=True if num_workers_train > 0 else False,
                             prefetch_factor=2 if num_workers_train > 0 else None,
@@ -809,7 +856,7 @@ def get_loader(
                             batch_size=config["batch_size"],
                             shuffle=False,
                             drop_last=False,
-                            pin_memory=True,
+                            pin_memory=pin_memory_flag,
                             num_workers=num_workers_eval,
                             persistent_workers=True if num_workers_eval > 0 else False)
 
@@ -823,7 +870,7 @@ def get_loader(
                              batch_size=config["batch_size"],
                              shuffle=False,
                              drop_last=False,
-                             pin_memory=True,
+                             pin_memory=pin_memory_flag,
                              num_workers=num_workers_eval,
                              persistent_workers=True if num_workers_eval > 0 else False)
 

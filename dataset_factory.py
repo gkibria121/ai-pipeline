@@ -290,7 +290,7 @@ def load_fake_or_real_data(base_path: Path) -> Tuple[Dict, List, Dict, List, Lis
 
 def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int, 
                            random_noise: bool, batch_size: int, seed: int,
-                           data_subset: float = 1.0):
+                           data_subset: float = 1.0, device=None, **kwargs):
     """
     Create appropriate dataset loaders based on dataset type.
     
@@ -365,12 +365,16 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
         # Allow zero eval workers to avoid spawning subprocesses in notebooks/Windows
         num_workers_eval = max(0, num_workers_train // 2)
         
+        # pin_memory should be enabled when running on CUDA for faster host->device copies
+        # Accept device via kwargs for backward compatibility.
+        pin_memory_flag = True if device is not None and getattr(device, 'type', None) == 'cuda' else False
+
         train_loader = DataLoader(
             train_set,
             batch_size=batch_size,
             shuffle=True,
             drop_last=True,
-            pin_memory=True,
+            pin_memory=pin_memory_flag,
             num_workers=num_workers_train,
             persistent_workers=True if num_workers_train > 0 else False,
             prefetch_factor=2 if num_workers_train > 0 else None,
@@ -383,7 +387,7 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            pin_memory=True,
+            pin_memory=pin_memory_flag,
             num_workers=num_workers_eval,
             persistent_workers=True if num_workers_eval > 0 else False
         )
@@ -393,7 +397,7 @@ def create_dataset_loaders(dataset_type: int, base_path: Path, feature_type: int
             batch_size=batch_size,
             shuffle=False,
             drop_last=False,
-            pin_memory=True,
+            pin_memory=pin_memory_flag,
             num_workers=num_workers_eval,
             persistent_workers=True if num_workers_eval > 0 else False
         )
