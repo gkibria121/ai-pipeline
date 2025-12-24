@@ -937,17 +937,30 @@ def get_model(model_config: Dict, device: torch.device):
                 emb_dims = []
                 for m in self.models:
                     dim = None
+                    # Prefer BatchNorm1d feature size if present (represents final emb dim)
                     if hasattr(m, 'embedding'):
+                        bn_found = None
+                        linear_found = None
+                        has_mfm = False
                         for mod in m.embedding.modules():
                             if isinstance(mod, nn.BatchNorm1d):
-                                dim = mod.num_features
-                            if isinstance(mod, nn.Linear) and dim is None:
-                                # fallback: use first linear out_features
-                                dim = getattr(mod, 'out_features', None)
-                            if dim is not None:
-                                break
+                                bn_found = mod.num_features
+                            if isinstance(mod, nn.Linear) and linear_found is None:
+                                linear_found = getattr(mod, 'out_features', None)
+                            if mod.__class__.__name__.startswith('MaxFeatureMap'):
+                                has_mfm = True
+                        if bn_found is not None:
+                            dim = bn_found
+                        elif linear_found is not None:
+                            # Some embeddings use a linear that outputs 2*emb_dim followed
+                            # by a MaxFeatureMap (MFM) which halves channels — detect
+                            # that and divide by 2 when appropriate.
+                            if has_mfm and linear_found % 2 == 0:
+                                dim = linear_found // 2
+                            else:
+                                dim = linear_found
+                    # Fallback: infer from classifier first linear input
                     if dim is None and hasattr(m, 'classifier'):
-                        # Many models have classifier input equal to emb dim
                         for mod in m.classifier.modules():
                             if isinstance(mod, nn.Linear):
                                 dim = getattr(mod, 'in_features', None)
