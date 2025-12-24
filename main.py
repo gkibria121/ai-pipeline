@@ -144,6 +144,12 @@ def main(args: argparse.Namespace) -> None:
     # Expose dataset_version for printing and later use
     # Do NOT mutate args.dataset_version here; respect user's explicit choice.
     dataset_version = getattr(args, 'dataset_version', None)
+
+    # If using Fake-or-Real (`dataset_type == 2`) and the user did not provide
+    # a `--dataset_version`, default to version 3 (the 2-second clips).
+    if dataset_type == 2 and dataset_version is None:
+        dataset_version = 3
+        print("ℹ️  --dataset_version not provided for Fake-or-Real; defaulting to 3")
     
     # Display dataset information
     print("\n" + "="*70)

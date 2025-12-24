@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset_version",
                         type=int,
                         default=None,
-                        help="(Fake-or-Real only) dataset version identifier. If omitted, defaults to 3 when base path matches known version paths.")
+                        help="(Fake-or-Real only) dataset version identifier. Defaults to 3 when omitted.")
     parser.add_argument("--epochs",
                         type=int,
                         default=None,
