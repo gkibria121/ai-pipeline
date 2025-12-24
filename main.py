@@ -187,8 +187,25 @@ def main(args: argparse.Namespace) -> None:
         config["model_path"] = args.eval_model_weights
     
     # Set feature_type in config
+    # Support multimodal feature types passed as comma-separated string e.g. "1,2,3"
     if args.feature_type is not None:
-        config["feature_type"] = args.feature_type
+        # args.feature_type may be an int, str like '1', or str like '1,2,3'
+        ft_arg = args.feature_type
+        if isinstance(ft_arg, str):
+            # parse comma-separated list
+            if "," in ft_arg:
+                try:
+                    parsed = [int(x.strip()) for x in ft_arg.split(",") if x.strip() != ""]
+                    config["feature_type"] = parsed
+                except Exception:
+                    # fallback to single int parse
+                    config["feature_type"] = int(ft_arg)
+            else:
+                # single numeric string
+                config["feature_type"] = int(ft_arg)
+        else:
+            # int provided
+            config["feature_type"] = ft_arg
     elif "feature_type" not in config:
         config["feature_type"] = 0  # Default to raw waveform
     
@@ -258,7 +275,11 @@ def main(args: argparse.Namespace) -> None:
 
     # define model related paths
     feature_type = config.get("feature_type", 0)
-    feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
+    # Support multimodal feature_type (list of ints)
+    if isinstance(feature_type, (list, tuple)):
+        feature_name = "multimodal_" + ",".join(str(x) for x in feature_type)
+    else:
+        feature_name = FEATURE_TYPES.get(feature_type, f"feat{feature_type}")
     dataset_name = DATASET_TYPES.get(dataset_type, f"DS{dataset_type}")
     
     # Build model tag with dataset name; include version for Fake-or-Real if provided
@@ -331,9 +352,11 @@ def main(args: argparse.Namespace) -> None:
             feature_viz_dir = model_tag / "feature_analysis"
             print(f"Using sample: {Path(sample_audio).name}")
             if getattr(args, 'feature_analysis', False):
+                # If multimodal, visualize only the first modality for inspection
+                vis_ft = feature_type[0] if isinstance(feature_type, (list, tuple)) else feature_type
                 analyze_and_visualize_features(
                     audio_file=sample_audio,
-                    feature_type=feature_type,
+                    feature_type=vis_ft,
                     save_dir=feature_viz_dir,
                     sr=16000
                 )
@@ -378,6 +401,60 @@ def main(args: argparse.Namespace) -> None:
 
     # define model architecture
     model = get_model(model_config, device)
+
+    # If using multimodal spectrogram inputs (feature_type is a list), wrap the
+    # base model to perform intermediate fusion when possible. The wrapper will
+    # run the backbone per-modality and concat feature maps before pooling.
+    class MultimodalFusionWrapper(nn.Module):
+        def __init__(self, base_model, num_modalities: int):
+            super().__init__()
+            self.base = base_model
+            self.num_modalities = num_modalities
+            # base model must expose backbone/pool/embedding/classifier for intermediate fusion
+            self.has_intermediate = all(hasattr(self.base, a) for a in ("backbone", "pool", "embedding", "classifier"))
+            if not self.has_intermediate:
+                # fallback: early fusion via 1x1 conv (channel reduction)
+                self.fuse = nn.Conv2d(num_modalities, 1, kernel_size=1)
+            else:
+                self.fuse = None
+
+        def forward(self, x, Freq_aug=False):
+            # Expect x shape (B, C, H, T) for spectrogram stacks
+            if self.has_intermediate:
+                # Apply backbone separately per modality
+                feats = []
+                for i in range(self.num_modalities):
+                    xi = x[:, i:i+1, :, :]
+                    fi = self.base.backbone(xi)
+                    feats.append(fi)
+                # Concatenate feature maps along channel dim
+                fused = torch.cat(feats, dim=1)
+                # Collapse frequency axis like original models do
+                features = fused.mean(dim=2)
+                pooled = self.base.pool(features)
+                embeddings = self.base.embedding(pooled)
+                output = self.base.classifier(embeddings)
+                return embeddings, output
+            else:
+                # Early fuse channels into single-channel input
+                fused_in = self.fuse(x)
+                # Remove channel dim if base expects (B, H, T) or let base handle 4D
+                # Many models accept both 3D (B,H,T) and 4D (B,1,H,T)
+                return self.base(fused_in, Freq_aug=Freq_aug)
+
+    # Wrap model if multimodal feature_type specified
+    ft_conf = config.get("feature_type", None)
+    if isinstance(ft_conf, (list, tuple)) and len(ft_conf) > 1:
+        num_modalities = len(ft_conf)
+        # Resolve human-readable feature names from FEATURE_TYPES mapping
+        try:
+            modal_names = [FEATURE_TYPES.get(int(x), f"feat{int(x)}") for x in ft_conf]
+        except Exception:
+            modal_names = [FEATURE_TYPES.get(x, f"feat{x}") for x in ft_conf]
+        names_str = ", ".join(f"{int(x)}={n}" for x, n in zip(ft_conf, modal_names))
+        print(f"ℹ️  Multimodal feature_type detected ({ft_conf}) → using {num_modalities} modalities; applying fusion wrapper")
+        print(f"  Modalities: {names_str}")
+        model = MultimodalFusionWrapper(model, num_modalities)
     
     # Convert model to channels_last memory format for faster CNN operations
     # This provides up to 30% speedup on modern GPUs for CNN models
@@ -424,7 +501,13 @@ def main(args: argparse.Namespace) -> None:
     print(f"{'='*60}")
     print(f"  Model:            {model_config.get('architecture', 'Unknown')}")
     print(f"  Dataset:          {dataset_name} (Type {dataset_type})")
-    print(f"  Feature:          {feature_name} (Type {feature_type})")
+    # Display feature_type nicely whether it's an int or a list
+    ft_display = config.get("feature_type")
+    if isinstance(ft_display, (list, tuple)):
+        ft_display_str = ",".join(str(x) for x in ft_display)
+    else:
+        ft_display_str = str(ft_display)
+    print(f"  Feature:          {feature_name} (Type {ft_display_str})")
     print(f"  Augmentation:     {'✅ ENABLED' if config.get('random_noise', False) else '❌ DISABLED'}")
     print(f"  Weight Avg (SWA): {'✅ ENABLED' if config.get('weight_avg', True) else '❌ DISABLED'}")
     print(f"  Epochs:           {config['num_epochs']}")
@@ -1133,7 +1216,8 @@ if __name__ == "__main__":
         parser.add_argument("--dataset_version", type=int, default=None)
         parser.add_argument("--epochs", type=int, default=None)
         parser.add_argument("--batch_size", type=int, default=None)
-        parser.add_argument("--feature_type", type=int, default=None, choices=[0, 1, 2, 3, 4])
+        parser.add_argument("--feature_type", type=str, default=None,
+                    help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt. For multimodal, pass comma-separated list e.g. '1,2,3'.")
         parser.add_argument("--feature_analysis", action="store_true")
         parser.add_argument("--random_noise", action="store_true")
         parser.add_argument("--weight_avg", action="store_true")

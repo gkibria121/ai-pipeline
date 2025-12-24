@@ -15,6 +15,21 @@ from data_utils import (extract_feature, apply_augmentation, pad, pad_random,
                         apply_composed_augmentation, apply_spectrogram_augmentation)
 
 
+def _resize_freq(feat: np.ndarray, target_h: int) -> np.ndarray:
+    """Resize frequency axis (axis=0) by padding or truncating to target_h."""
+    h, t = feat.shape
+    if h == target_h:
+        return feat
+    if h < target_h:
+        pad_h = target_h - h
+        pad_top = pad_h // 2
+        pad_bottom = pad_h - pad_top
+        return np.pad(feat, ((pad_top, pad_bottom), (0, 0)), mode='constant', constant_values=0.0)
+    # h > target_h -> center-crop frequencies
+    start = (h - target_h) // 2
+    return feat[start:start + target_h, :]
+
+
 # Dataset type mappings
 DATASET_TYPES = {
     1: "ASVspoof2019",
@@ -152,37 +167,75 @@ class Dataset_FakeOrReal_train(Dataset):
             # Apply 1-2 augmentations with 80% probability
             X = apply_composed_augmentation(X, sr=sr, num_augmentations=2, augment_prob=0.8)
         
-        # Extract features
-        X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
-        
-        # Apply SpecAugment for spectrogram features during training with augmentation
-        if self.random_noise and self.feature_type > 0:
-            X_feat = apply_spectrogram_augmentation(
-                X_feat, 
-                freq_mask_prob=0.5, 
-                time_mask_prob=0.5,
-                max_freq_mask=20,
-                max_time_mask=50
-            )
-        
-        # Apply padding based on feature type
-        if self.feature_type == 0:
-            X_pad = pad_random(X_feat, self.cut)
-            x_inp = Tensor(X_pad)
-        else:
-            # For time-frequency features
-            time_steps = X_feat.shape[1]
+        # Handle single or multimodal feature extraction
+        if isinstance(self.feature_type, (list, tuple)):
+            # Only support multimodal for time-frequency features (1,2,3,...)
+            feats = []
+            for ft in self.feature_type:
+                if ft == 0:
+                    raise ValueError("Multimodal mixing of raw waveform (0) with spectrograms is not supported")
+                f = extract_feature(X, feature_type=ft, sr=sr)
+                feats.append(f)
+
+            # Align frequency axis to the maximum height among modalities
+            heights = [f.shape[0] for f in feats]
+            target_h = max(heights)
+            feats_resized = [ _resize_freq(f, target_h) for f in feats ]
+
+            # Optionally apply spectrogram augmentation per modality
+            if self.random_noise:
+                feats_resized = [ apply_spectrogram_augmentation(f, freq_mask_prob=0.5, time_mask_prob=0.5,
+                                                                 max_freq_mask=20, max_time_mask=50) for f in feats_resized ]
+
+            # Align time axis (tile or crop) to target steps
+            time_steps = feats_resized[0].shape[1]
             target_steps = int(self.cut / 160) + 1
-            
-            if time_steps >= target_steps:
-                # Random crop during training for more variety
-                stt = np.random.randint(0, time_steps - target_steps + 1)
-                X_pad = X_feat[:, stt:stt + target_steps]
+            arranged = []
+            for f in feats_resized:
+                ts = f.shape[1]
+                if ts >= target_steps:
+                    stt = np.random.randint(0, ts - target_steps + 1)
+                    fpad = f[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / ts) + 1
+                    fpad = np.tile(f, (1, num_repeats))[:, :target_steps]
+                arranged.append(fpad)
+
+            # Stack modalities along channel axis -> shape (C, H, T)
+            stacked = np.stack(arranged, axis=0)
+            x_inp = Tensor(stacked)
+        else:
+            # Single feature path (existing behavior)
+            X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+
+            # Apply SpecAugment for spectrogram features during training with augmentation
+            if self.random_noise and self.feature_type > 0:
+                X_feat = apply_spectrogram_augmentation(
+                    X_feat, 
+                    freq_mask_prob=0.5, 
+                    time_mask_prob=0.5,
+                    max_freq_mask=20,
+                    max_time_mask=50
+                )
+
+            # Apply padding based on feature type
+            if self.feature_type == 0:
+                X_pad = pad_random(X_feat, self.cut)
+                x_inp = Tensor(X_pad)
             else:
-                num_repeats = int(target_steps / time_steps) + 1
-                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
-            
-            x_inp = Tensor(X_pad)
+                # For time-frequency features
+                time_steps = X_feat.shape[1]
+                target_steps = int(self.cut / 160) + 1
+                
+                if time_steps >= target_steps:
+                    # Random crop during training for more variety
+                    stt = np.random.randint(0, time_steps - target_steps + 1)
+                    X_pad = X_feat[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / time_steps) + 1
+                    X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
+                
+                x_inp = Tensor(X_pad)
         
         y = self.labels[key]
         return x_inp, y
@@ -215,26 +268,54 @@ class Dataset_FakeOrReal_devNeval(Dataset):
         audio_path = self.base_dir / key
         X, sr = sf.read(str(audio_path))
         
-        # Extract features
-        X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
-        
-        # Apply padding - use deterministic center cropping for evaluation
-        if self.feature_type == 0:
-            X_pad = pad(X_feat, self.cut)
-            x_inp = Tensor(X_pad)
-        else:
-            time_steps = X_feat.shape[1]
+        # Handle single or multimodal feature extraction for deterministic eval
+        if isinstance(self.feature_type, (list, tuple)):
+            # Multimodal evaluation path - center-crop frequencies and time for determinism
+            feats = []
+            for ft in self.feature_type:
+                if ft == 0:
+                    raise ValueError("Multimodal mixing of raw waveform (0) with spectrograms is not supported")
+                f = extract_feature(X, feature_type=ft, sr=sr)
+                feats.append(f)
+
+            heights = [f.shape[0] for f in feats]
+            target_h = max(heights)
+            feats_resized = [ _resize_freq(f, target_h) for f in feats ]
+
             target_steps = int(self.cut / 160) + 1
-            
-            if time_steps >= target_steps:
-                # Use CENTER cropping for deterministic evaluation (not random!)
-                stt = (time_steps - target_steps) // 2
-                X_pad = X_feat[:, stt:stt + target_steps]
+            arranged = []
+            for f in feats_resized:
+                ts = f.shape[1]
+                if ts >= target_steps:
+                    stt = (ts - target_steps) // 2
+                    fpad = f[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / ts) + 1
+                    fpad = np.tile(f, (1, num_repeats))[:, :target_steps]
+                arranged.append(fpad)
+
+            stacked = np.stack(arranged, axis=0)
+            x_inp = Tensor(stacked)
+        else:
+            X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+
+            # Apply padding - use deterministic center cropping for evaluation
+            if self.feature_type == 0:
+                X_pad = pad(X_feat, self.cut)
+                x_inp = Tensor(X_pad)
             else:
-                num_repeats = int(target_steps / time_steps) + 1
-                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
-            
-            x_inp = Tensor(X_pad)
+                time_steps = X_feat.shape[1]
+                target_steps = int(self.cut / 160) + 1
+                
+                if time_steps >= target_steps:
+                    # Use CENTER cropping for deterministic evaluation (not random!)
+                    stt = (time_steps - target_steps) // 2
+                    X_pad = X_feat[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / time_steps) + 1
+                    X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
+                
+                x_inp = Tensor(X_pad)
         
         return x_inp, key
 

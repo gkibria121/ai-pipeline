@@ -38,10 +38,9 @@ def build_parser() -> argparse.ArgumentParser:
                         default=None,
                         help="batch size to override config (default: None, uses config value)")
     parser.add_argument("--feature_type",
-                        type=int,
+                        type=str,
                         default=None,
-                        choices=[0, 1, 2, 3, 4],
-                        help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt (default: None, uses config value)")
+                        help="feature type: 0=raw, 1=mel_spectrogram, 2=lfcc, 3=mfcc, 4=cqt. For multimodal, pass comma-separated list e.g. '1,2,3' (default: None, uses config value)")
     parser.add_argument("--feature_analysis",
                         action="store_true",
                         help="generate feature analysis visualization before training (disabled by default)")
