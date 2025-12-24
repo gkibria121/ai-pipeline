@@ -75,18 +75,21 @@ def _get_optimizer(model_parameters, optim_config):
     optimizer_name = optim_config['optimizer']
 
     if optimizer_name == 'sgd':
-        optimizer = torch.optim.SGD(model_parameters,
-                                    lr=optim_config['base_lr'],
-                                    momentum=optim_config['momentum'],
-                                    weight_decay=optim_config['weight_decay'],
-                                    nesterov=optim_config['nesterov'])
+        optimizer = torch.optim.SGD(
+            model_parameters,
+            lr=optim_config.get('base_lr', 0.01),
+            momentum=optim_config.get('momentum', 0.9),
+            weight_decay=optim_config.get('weight_decay', 0.0),
+            nesterov=optim_config.get('nesterov', False),
+        )
     elif optimizer_name == 'adam':
-        optimizer = torch.optim.Adam(model_parameters,
-                                     lr=optim_config['base_lr'],
-                                     betas=optim_config['betas'],
-                                     weight_decay=optim_config['weight_decay'],
-                                     amsgrad=str_to_bool(
-                                         optim_config['amsgrad']))
+        optimizer = torch.optim.Adam(
+            model_parameters,
+            lr=optim_config.get('base_lr', 1e-3),
+            betas=tuple(optim_config.get('betas', (0.9, 0.999))),
+            weight_decay=optim_config.get('weight_decay', 0.0),
+            amsgrad=str_to_bool(optim_config.get('amsgrad', 'False')),
+        )
     else:
         print('Un-known optimizer', optimizer_name)
         sys.exit()
