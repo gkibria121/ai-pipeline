@@ -417,6 +417,22 @@ def main(args: argparse.Namespace) -> None:
                 self.fuse = nn.Conv2d(num_modalities, 1, kernel_size=1)
             else:
                 self.fuse = None
+            # If intermediate fusion is available, concatenating per-modality
+            # backbone outputs will increase channel dimension by `num_modalities`.
+            # Project concatenated channels back to the backbone's expected
+            # channel count with a 1x1 conv so pooling/embedding shapes match.
+            if self.has_intermediate:
+                base_out_ch = getattr(self.base.backbone, 'out_channels', None)
+                if base_out_ch is None:
+                    # Fallback to common default if backbone doesn't expose out_channels
+                    base_out_ch = 32
+                self.channel_proj = nn.Conv2d(base_out_ch * num_modalities, base_out_ch, kernel_size=1)
+                # Initialize projection weights
+                nn.init.kaiming_normal_(self.channel_proj.weight, mode='fan_out', nonlinearity='relu')
+                if self.channel_proj.bias is not None:
+                    nn.init.constant_(self.channel_proj.bias, 0.0)
+            else:
+                self.channel_proj = None
 
         def forward(self, x, Freq_aug=False):
             # Expect x shape (B, C, H, T) for spectrogram stacks
@@ -429,6 +445,9 @@ def main(args: argparse.Namespace) -> None:
                     feats.append(fi)
                 # Concatenate feature maps along channel dim
                 fused = torch.cat(feats, dim=1)
+                # Project concatenated channels back to expected backbone channels
+                if self.channel_proj is not None:
+                    fused = self.channel_proj(fused)
                 # Collapse frequency axis like original models do
                 features = fused.mean(dim=2)
                 pooled = self.base.pool(features)
