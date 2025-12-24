@@ -879,6 +879,58 @@ def evaluate_model(dataset_type, cm_scores_file, database_path, config, output_f
 
 def get_model(model_config: Dict, device: torch.device):
     """Define DNN model architecture"""
+    # Support single model config (dict) or ensemble (list of model configs)
+    if isinstance(model_config, (list, tuple)):
+        # Build each sub-model and wrap in an ensemble
+        models = []
+        for idx, mconf in enumerate(model_config):
+            module = import_module("models.{}".format(mconf["architecture"]))
+            model_variant = mconf.get("model_variant", None)
+            if model_variant == "attention":
+                _model_cls = getattr(module, "ModelWithAttention")
+            elif model_variant == "large":
+                _model_cls = getattr(module, "ModelLarge")
+            else:
+                _model_cls = getattr(module, "Model")
+
+            submodel = _model_cls(mconf).to(device)
+            nb_params = sum([param.view(-1).size()[0] for param in submodel.parameters()])
+            print(f"no. params (model[{idx}] {mconf.get('architecture')}): {nb_params}")
+            models.append(submodel)
+
+        class EnsembleModel(nn.Module):
+            """Simple ensemble wrapper that averages logits and embeddings.
+
+            Expects each submodel to return (embeddings, logits).
+            The wrapper returns (avg_embedding, avg_logits) where averages are
+            computed across models. Models are stored as `nn.ModuleList`.
+            """
+            def __init__(self, model_list):
+                super().__init__()
+                self.models = nn.ModuleList(model_list)
+
+            def forward(self, x, Freq_aug=False):
+                outs = []
+                embs = []
+                for m in self.models:
+                    emb, out = m(x, Freq_aug=Freq_aug)
+                    embs.append(emb)
+                    outs.append(out)
+                # Stack and average
+                stacked_outs = torch.stack(outs, dim=0)  # (M, B, C)
+                avg_out = torch.mean(stacked_outs, dim=0)
+
+                stacked_embs = torch.stack(embs, dim=0)
+                avg_emb = torch.mean(stacked_embs, dim=0)
+
+                return avg_emb, avg_out
+
+        ensemble = EnsembleModel(models).to(device)
+        total_params = sum(p.numel() for p in ensemble.parameters())
+        print(f"Ensemble created with {len(models)} models, total params: {total_params}")
+        return ensemble
+
+    # Single model path (existing behavior)
     module = import_module("models.{}".format(model_config["architecture"]))
     
     # Check for model variant (e.g., "attention" for EfficientNetB2, "large" for LCNN)
