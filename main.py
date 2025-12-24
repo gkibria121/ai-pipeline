@@ -923,15 +923,52 @@ def get_model(model_config: Dict, device: torch.device):
             models.append(submodel)
 
         class EnsembleModel(nn.Module):
-            """Simple ensemble wrapper that averages logits and embeddings.
+            """Ensemble wrapper that averages logits and projects embeddings.
 
-            Expects each submodel to return (embeddings, logits).
-            The wrapper returns (avg_embedding, avg_logits) where averages are
-            computed across models. Models are stored as `nn.ModuleList`.
+            Handles heterogeneous embedding sizes by projecting each model's
+            embedding into a common `target_emb_dim` before averaging.
             """
             def __init__(self, model_list):
                 super().__init__()
                 self.models = nn.ModuleList(model_list)
+
+                # Infer embedding sizes for each submodel
+                emb_dims = []
+                for m in self.models:
+                    dim = None
+                    if hasattr(m, 'embedding'):
+                        for mod in m.embedding.modules():
+                            if isinstance(mod, nn.BatchNorm1d):
+                                dim = mod.num_features
+                            if isinstance(mod, nn.Linear) and dim is None:
+                                # fallback: use first linear out_features
+                                dim = getattr(mod, 'out_features', None)
+                            if dim is not None:
+                                break
+                    if dim is None and hasattr(m, 'classifier'):
+                        # Many models have classifier input equal to emb dim
+                        for mod in m.classifier.modules():
+                            if isinstance(mod, nn.Linear):
+                                dim = getattr(mod, 'in_features', None)
+                                break
+                    emb_dims.append(dim)
+
+                # Choose a target embedding dimension (max of detected dims)
+                valid_dims = [d for d in emb_dims if d is not None]
+                self.target_emb_dim = max(valid_dims) if valid_dims else 128
+
+                # Create projection layers to map each embedding to target dim
+                projs = []
+                for d in emb_dims:
+                    if d is None or d == self.target_emb_dim:
+                        projs.append(nn.Identity())
+                    else:
+                        lin = nn.Linear(d, self.target_emb_dim)
+                        nn.init.xavier_uniform_(lin.weight)
+                        if lin.bias is not None:
+                            nn.init.constant_(lin.bias, 0.0)
+                        projs.append(lin)
+                self.projections = nn.ModuleList(projs)
 
             def forward(self, x, Freq_aug=False):
                 outs = []
@@ -940,11 +977,23 @@ def get_model(model_config: Dict, device: torch.device):
                     emb, out = m(x, Freq_aug=Freq_aug)
                     embs.append(emb)
                     outs.append(out)
-                # Stack and average
+
+                # Average logits (assume same number of classes across models)
                 stacked_outs = torch.stack(outs, dim=0)  # (M, B, C)
                 avg_out = torch.mean(stacked_outs, dim=0)
 
-                stacked_embs = torch.stack(embs, dim=0)
+                # Project embeddings to common size then average
+                proj_embs = []
+                for i, emb in enumerate(embs):
+                    proj = self.projections[i]
+                    # If embedding is 2D (B, D), apply linear; pass through Identity otherwise
+                    if isinstance(proj, nn.Identity):
+                        proj_embs.append(emb)
+                    else:
+                        proj_embs.append(proj(emb))
+
+                # Stack along new model dim and average
+                stacked_embs = torch.stack(proj_embs, dim=0)
                 avg_emb = torch.mean(stacked_embs, dim=0)
 
                 return avg_emb, avg_out
