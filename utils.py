@@ -22,7 +22,11 @@ def str_to_bool(val):
     >>> str_to_bool('FALSE')
     0
     """
-    val = val.lower()
+    # Allow direct boolean values
+    if isinstance(val, bool):
+        return val
+    # Coerce other types to string for legacy configs that use string flags
+    val = str(val).lower()
     if val in ('y', 'yes', 't', 'true', 'on', '1'):
         return True
     if val in ('n', 'no', 'f', 'false', 'off', '0'):
@@ -153,5 +157,14 @@ def set_seed(seed, config = None):
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = str_to_bool(config["cudnn_deterministic_toggle"])
-        torch.backends.cudnn.benchmark = str_to_bool(config["cudnn_benchmark_toggle"])
+        # Use safe defaults if keys are missing from config
+        cudnn_deterministic = config.get("cudnn_deterministic_toggle", "False")
+        cudnn_benchmark = config.get("cudnn_benchmark_toggle", "True")
+        try:
+            torch.backends.cudnn.deterministic = str_to_bool(cudnn_deterministic)
+        except ValueError:
+            torch.backends.cudnn.deterministic = False
+        try:
+            torch.backends.cudnn.benchmark = str_to_bool(cudnn_benchmark)
+        except ValueError:
+            torch.backends.cudnn.benchmark = True
