@@ -931,6 +931,7 @@ def get_model(model_config: Dict, device: torch.device):
             def __init__(self, model_list):
                 super().__init__()
                 self.models = nn.ModuleList(model_list)
+                self.is_ensemble = True
 
                 # Infer embedding sizes for each submodel
                 emb_dims = []
@@ -1309,24 +1310,46 @@ def train_epoch(
             # Mixed precision forward pass using new torch.amp API
             if use_amp:
                 with torch.amp.autocast('cuda', dtype=amp_dtype):
-                    _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
-                    batch_loss = criterion(batch_out, batch_y)
-                
+                    # Special handling for ensembles: compute per-model outputs
+                    if getattr(model, 'is_ensemble', False):
+                        outs = []
+                        for m in model.models:
+                            _, out_i = m(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
+                            outs.append(out_i)
+                        stacked = torch.stack(outs, dim=0)
+                        batch_out = torch.mean(stacked, dim=0)
+                        # Optionally average per-model losses for stability
+                        batch_loss = criterion(batch_out, batch_y)
+                    else:
+                        _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
+                        batch_loss = criterion(batch_out, batch_y)
+
                 running_loss += batch_loss.item() * batch_size
-                
+
                 # Backward pass with gradient scaling (only for FP16)
                 scaler.scale(batch_loss).backward()
-                
+
                 # Gradient clipping for stability (optional but recommended)
                 if config.get("grad_clip", 0) > 0:
                     scaler.unscale_(optim)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config["grad_clip"])
-                
+
                 scaler.step(optim)
                 scaler.update()
             else:
-                _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
-                batch_loss = criterion(batch_out, batch_y)
+                # Non-AMP path
+                if getattr(model, 'is_ensemble', False):
+                    outs = []
+                    for m in model.models:
+                        _, out_i = m(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
+                        outs.append(out_i)
+                    stacked = torch.stack(outs, dim=0)
+                    batch_out = torch.mean(stacked, dim=0)
+                    batch_loss = criterion(batch_out, batch_y)
+                else:
+                    _, batch_out = model(batch_x, Freq_aug=str_to_bool(config["freq_aug"]))
+                    batch_loss = criterion(batch_out, batch_y)
+
                 running_loss += batch_loss.item() * batch_size
                 batch_loss.backward()
                 
