@@ -229,6 +229,18 @@ def main(args: argparse.Namespace) -> None:
             print("⚠️  Weight averaging (SWA): DISABLED")
 
     # make experiment reproducible
+    # In interactive environments (notebooks) Python may cache imported
+    # modules. Reload `utils` to ensure we use the latest patched version
+    # (prevents stale KeyError from old code during development).
+    try:
+        import importlib, utils
+        importlib.reload(utils)
+        # update local reference to fresh function
+        set_seed = utils.set_seed
+    except Exception:
+        # if reload fails, continue with previously imported symbol
+        pass
+
     set_seed(args.seed, config)
 
     # define database related paths
