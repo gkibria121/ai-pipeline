@@ -474,6 +474,9 @@ def main(args: argparse.Namespace) -> None:
         print(f"ℹ️  Multimodal feature_type detected ({ft_conf}) → using {num_modalities} modalities; applying fusion wrapper")
         print(f"  Modalities: {names_str}")
         model = MultimodalFusionWrapper(model, num_modalities)
+        # Ensure wrapper parameters (e.g., 1x1 projection) are moved to the
+        # selected device so their dtype/device match upstream model params.
+        model = model.to(device)
     
     # Convert model to channels_last memory format for faster CNN operations
     # This provides up to 30% speedup on modern GPUs for CNN models
