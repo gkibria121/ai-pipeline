@@ -533,7 +533,19 @@ def main(args: argparse.Namespace) -> None:
     print(f"\n{'='*60}")
     print(f"TRAINING CONFIGURATION SUMMARY")
     print(f"{'='*60}")
-    print(f"  Model:            {model_config.get('architecture', 'Unknown')}")
+    # Nicely print model or ensemble description
+    if isinstance(model_config, (list, tuple)):
+        archs = []
+        for i, mconf in enumerate(model_config):
+            try:
+                name = mconf.get('architecture', 'Unknown')
+            except Exception:
+                name = str(mconf)
+            archs.append(f"[{i}]{name}")
+        model_summary = "Ensemble(" + ", ".join(archs) + ")"
+    else:
+        model_summary = model_config.get('architecture', 'Unknown')
+    print(f"  Model:            {model_summary}")
     print(f"  Dataset:          {dataset_name} (Type {dataset_type})")
     # Display feature_type nicely whether it's an int or a list
     ft_display = config.get("feature_type")
