@@ -66,7 +66,42 @@ def analyze_and_visualize_features(
     if len(waveform) > max_samples:
         waveform = waveform[:max_samples]
     
-    feature_name = FEATURE_TYPES.get(feature_type, f"feature_{feature_type}")
+        # Support multimodal feature_type (list/tuple)
+        if isinstance(feature_type, (list, tuple)):
+            feature_names = [FEATURE_TYPES.get(ft, f"feature_{ft}") for ft in feature_type]
+            features = [extract_feature(waveform, ft, sr) for ft in feature_type]
+            # Plot waveform
+            fig = plt.figure(figsize=(16, 4 + 3 * len(features)))
+            ax1 = plt.subplot(len(features) + 1, 1, 1)
+            time_axis = np.arange(len(waveform)) / sr
+            ax1.plot(time_axis, waveform, linewidth=0.5)
+            ax1.set_xlabel('Time (s)')
+            ax1.set_ylabel('Amplitude')
+            ax1.set_title('Audio Waveform', fontweight='bold', fontsize=12)
+            ax1.grid(True, alpha=0.3)
+            # Plot each feature
+            for i, (feature, fname) in enumerate(zip(features, feature_names)):
+                ax = plt.subplot(len(features) + 1, 1, i + 2)
+                if feature_type[i] == 0:
+                    if LIBROSA_AVAILABLE:
+                        D = librosa.amplitude_to_db(np.abs(librosa.stft(waveform)), ref=np.max)
+                        img = librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='hz', ax=ax)
+                        ax.set_title(f'{fname.upper()} - Spectrogram', fontweight='bold', fontsize=12)
+                        plt.colorbar(img, ax=ax, format='%+2.0f dB')
+                    else:
+                        ax.plot(waveform[:1000])
+                        ax.set_title(f'{fname.upper()} - Sample View', fontweight='bold', fontsize=12)
+                else:
+                    if LIBROSA_AVAILABLE:
+                        img = librosa.display.specshow(feature, sr=sr, x_axis='time', ax=ax, hop_length=160)
+                        plt.colorbar(img, ax=ax, format='%+2.0f')
+                    else:
+                        ax.imshow(feature, aspect='auto', origin='lower')
+                        ax.set_xlabel('Time')
+                        ax.set_ylabel('Frequency')
+                ax.set_title(f'{fname.upper()}', fontweight='bold', fontsize=12)
+        else:
+            feature_name = FEATURE_TYPES.get(feature_type, f"feature_{feature_type}")
     
     # Create visualization
     fig = plt.figure(figsize=(16, 10))
