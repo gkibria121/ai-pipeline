@@ -503,6 +503,11 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
     Returns:
         Feature representation as numpy array
     """
+    # Defensive: if feature_type is a list/tuple, extract and stack features for each type
+    if isinstance(feature_type, (list, tuple)):
+        feats = [extract_feature(waveform, feature_type=ft, sr=sr) for ft in feature_type]
+        return np.stack(feats, axis=0)
+
     # If input is multi-channel (e.g., stereo), convert to mono for feature extraction
     try:
         if waveform is not None and hasattr(waveform, "ndim") and waveform.ndim > 1:
