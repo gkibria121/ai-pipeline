@@ -426,10 +426,7 @@ def main(args: argparse.Namespace) -> None:
             self.modality_dropout_p = modality_dropout_p
             # base model must expose backbone/pool/embedding/classifier for intermediate fusion
             self.has_intermediate = all(hasattr(self.base, a) for a in ("backbone", "pool", "embedding", "classifier"))
-            # Add LayerNorm for each modality to normalize before fusion
-            self.norms = nn.ModuleList([
-                nn.LayerNorm(normalized_shape=None, elementwise_affine=True) for _ in range(num_modalities)
-            ])
+            # Remove LayerNorm modules; will use functional layer_norm in forward
             if not self.has_intermediate:
                 # fallback: early fusion via 1x1 conv (channel reduction)
                 self.fuse = nn.Conv2d(num_modalities, 1, kernel_size=1)
@@ -454,39 +451,31 @@ def main(args: argparse.Namespace) -> None:
 
         def forward(self, x, Freq_aug=False):
             # Expect x shape (B, C, H, T) for spectrogram stacks
-            # Normalize each modality before fusion
-            # x: (B, C, H, T), C=num_modalities
+            # Normalize each modality before fusion using F.layer_norm over (H, T)
             if self.has_intermediate:
                 feats = []
                 for i in range(self.num_modalities):
                     xi = x[:, i:i+1, :, :]
                     # LayerNorm over (H, T) per sample
                     B, C, H, T = xi.shape
-                    xi_flat = xi.view(B, -1)
-                    xi_norm = self.norms[i](xi_flat).view(B, C, H, T)
+                    xi_norm = F.layer_norm(xi, (H, T))
                     fi = self.base.backbone(xi_norm)
                     feats.append(fi)
-                # Concatenate feature maps along channel dim
                 fused = torch.cat(feats, dim=1)
-                # Apply modality dropout along channel dimension
                 fused = self.modality_dropout(fused)
-                # Project concatenated channels back to expected backbone channels
                 if self.channel_proj is not None:
                     fused = self.channel_proj(fused)
-                # Collapse frequency axis like original models do
                 features = fused.mean(dim=2)
                 pooled = self.base.pool(features)
                 embeddings = self.base.embedding(pooled)
                 output = self.base.classifier(embeddings)
                 return embeddings, output
             else:
-                # Early fuse channels into single-channel input
                 xs = []
                 for i in range(self.num_modalities):
                     xi = x[:, i:i+1, :, :]
                     B, C, H, T = xi.shape
-                    xi_flat = xi.view(B, -1)
-                    xi_norm = self.norms[i](xi_flat).view(B, C, H, T)
+                    xi_norm = F.layer_norm(xi, (H, T))
                     xs.append(xi_norm)
                 x_norm = torch.cat(xs, dim=1)
                 fused_in = self.fuse(x_norm)
