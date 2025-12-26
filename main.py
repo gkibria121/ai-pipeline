@@ -1,3 +1,4 @@
+import torch.nn.functional as F
 """
 Main script that trains, validates, and evaluates
 various models including AASIST.
@@ -418,12 +419,17 @@ def main(args: argparse.Namespace) -> None:
     # base model to perform intermediate fusion when possible. The wrapper will
     # run the backbone per-modality and concat feature maps before pooling.
     class MultimodalFusionWrapper(nn.Module):
-        def __init__(self, base_model, num_modalities: int):
+        def __init__(self, base_model, num_modalities: int, modality_dropout_p: float = 0.2):
             super().__init__()
             self.base = base_model
             self.num_modalities = num_modalities
+            self.modality_dropout_p = modality_dropout_p
             # base model must expose backbone/pool/embedding/classifier for intermediate fusion
             self.has_intermediate = all(hasattr(self.base, a) for a in ("backbone", "pool", "embedding", "classifier"))
+            # Add LayerNorm for each modality to normalize before fusion
+            self.norms = nn.ModuleList([
+                nn.LayerNorm(normalized_shape=None, elementwise_affine=True) for _ in range(num_modalities)
+            ])
             if not self.has_intermediate:
                 # fallback: early fusion via 1x1 conv (channel reduction)
                 self.fuse = nn.Conv2d(num_modalities, 1, kernel_size=1)
@@ -436,27 +442,34 @@ def main(args: argparse.Namespace) -> None:
             if self.has_intermediate:
                 base_out_ch = getattr(self.base.backbone, 'out_channels', None)
                 if base_out_ch is None:
-                    # Fallback to common default if backbone doesn't expose out_channels
                     base_out_ch = 32
                 self.channel_proj = nn.Conv2d(base_out_ch * num_modalities, base_out_ch, kernel_size=1)
-                # Initialize projection weights
                 nn.init.kaiming_normal_(self.channel_proj.weight, mode='fan_out', nonlinearity='relu')
                 if self.channel_proj.bias is not None:
                     nn.init.constant_(self.channel_proj.bias, 0.0)
             else:
                 self.channel_proj = None
+            # Modality dropout for regularization
+            self.modality_dropout = nn.Dropout(p=self.modality_dropout_p)
 
         def forward(self, x, Freq_aug=False):
             # Expect x shape (B, C, H, T) for spectrogram stacks
+            # Normalize each modality before fusion
+            # x: (B, C, H, T), C=num_modalities
             if self.has_intermediate:
-                # Apply backbone separately per modality
                 feats = []
                 for i in range(self.num_modalities):
                     xi = x[:, i:i+1, :, :]
-                    fi = self.base.backbone(xi)
+                    # LayerNorm over (H, T) per sample
+                    B, C, H, T = xi.shape
+                    xi_flat = xi.view(B, -1)
+                    xi_norm = self.norms[i](xi_flat).view(B, C, H, T)
+                    fi = self.base.backbone(xi_norm)
                     feats.append(fi)
                 # Concatenate feature maps along channel dim
                 fused = torch.cat(feats, dim=1)
+                # Apply modality dropout along channel dimension
+                fused = self.modality_dropout(fused)
                 # Project concatenated channels back to expected backbone channels
                 if self.channel_proj is not None:
                     fused = self.channel_proj(fused)
@@ -468,16 +481,22 @@ def main(args: argparse.Namespace) -> None:
                 return embeddings, output
             else:
                 # Early fuse channels into single-channel input
-                fused_in = self.fuse(x)
-                # Remove channel dim if base expects (B, H, T) or let base handle 4D
-                # Many models accept both 3D (B,H,T) and 4D (B,1,H,T)
+                xs = []
+                for i in range(self.num_modalities):
+                    xi = x[:, i:i+1, :, :]
+                    B, C, H, T = xi.shape
+                    xi_flat = xi.view(B, -1)
+                    xi_norm = self.norms[i](xi_flat).view(B, C, H, T)
+                    xs.append(xi_norm)
+                x_norm = torch.cat(xs, dim=1)
+                fused_in = self.fuse(x_norm)
+                fused_in = self.modality_dropout(fused_in)
                 return self.base(fused_in, Freq_aug=Freq_aug)
 
     # Wrap model if multimodal feature_type specified
     ft_conf = config.get("feature_type", None)
     if isinstance(ft_conf, (list, tuple)) and len(ft_conf) > 1:
         num_modalities = len(ft_conf)
-        # Resolve human-readable feature names from FEATURE_TYPES mapping
         try:
             modal_names = [FEATURE_TYPES.get(int(x), f"feat{int(x)}") for x in ft_conf]
         except Exception:
@@ -485,9 +504,8 @@ def main(args: argparse.Namespace) -> None:
         names_str = ", ".join(f"{int(x)}={n}" for x, n in zip(ft_conf, modal_names))
         print(f"ℹ️  Multimodal feature_type detected ({ft_conf}) → using {num_modalities} modalities; applying fusion wrapper")
         print(f"  Modalities: {names_str}")
-        model = MultimodalFusionWrapper(model, num_modalities)
-        # Ensure wrapper parameters (e.g., 1x1 projection) are moved to the
-        # selected device so their dtype/device match upstream model params.
+        # You can tune modality_dropout_p as needed (default 0.2)
+        model = MultimodalFusionWrapper(model, num_modalities, modality_dropout_p=0.2)
         model = model.to(device)
     
     # Convert model to channels_last memory format for faster CNN operations
