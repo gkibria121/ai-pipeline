@@ -206,7 +206,30 @@ class Dataset_FakeOrReal_train(Dataset):
             x_inp = Tensor(stacked)
         else:
             # Single feature path (existing behavior)
-            X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+            # Robust multimodal support: handle feature_type as list/tuple everywhere
+            if isinstance(self.feature_type, (list, tuple)):
+                feats = [extract_feature(X, feature_type=ft, sr=sr) for ft in self.feature_type]
+                # Align frequency axis
+                heights = [f.shape[0] for f in feats]
+                target_h = max(heights)
+                feats_resized = [ _resize_freq(f, target_h) for f in feats ]
+                # Align time axis
+                time_steps = feats_resized[0].shape[1]
+                target_steps = int(self.cut / 160) + 1
+                arranged = []
+                for f in feats_resized:
+                    ts = f.shape[1]
+                    if ts >= target_steps:
+                        stt = np.random.randint(0, ts - target_steps + 1)
+                        fpad = f[:, stt:stt + target_steps]
+                    else:
+                        num_repeats = int(target_steps / ts) + 1
+                        fpad = np.tile(f, (1, num_repeats))[:, :target_steps]
+                    arranged.append(fpad)
+                stacked = np.stack(arranged, axis=0)
+                X_feat = stacked
+            else:
+                X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
 
             # Apply SpecAugment for spectrogram features during training with augmentation
             if self.random_noise and self.feature_type > 0:
@@ -297,7 +320,28 @@ class Dataset_FakeOrReal_devNeval(Dataset):
             stacked = np.stack(arranged, axis=0)
             x_inp = Tensor(stacked)
         else:
-            X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
+            # Robust multimodal support: handle feature_type as list/tuple everywhere
+            if isinstance(self.feature_type, (list, tuple)):
+                feats = [extract_feature(X, feature_type=ft, sr=sr) for ft in self.feature_type]
+                heights = [f.shape[0] for f in feats]
+                target_h = max(heights)
+                feats_resized = [ _resize_freq(f, target_h) for f in feats ]
+                time_steps = feats_resized[0].shape[1]
+                target_steps = int(self.cut / 160) + 1
+                arranged = []
+                for f in feats_resized:
+                    ts = f.shape[1]
+                    if ts >= target_steps:
+                        stt = (ts - target_steps) // 2
+                        fpad = f[:, stt:stt + target_steps]
+                    else:
+                        num_repeats = int(target_steps / ts) + 1
+                        fpad = np.tile(f, (1, num_repeats))[:, :target_steps]
+                    arranged.append(fpad)
+                stacked = np.stack(arranged, axis=0)
+                X_feat = stacked
+            else:
+                X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
 
             # Apply padding - use deterministic center cropping for evaluation
             if self.feature_type == 0:
