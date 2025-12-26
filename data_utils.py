@@ -505,7 +505,14 @@ def extract_feature(waveform: np.ndarray, feature_type: int = 0, sr: int = 16000
     """
     # Defensive: if feature_type is a list/tuple, extract and stack features for each type
     if isinstance(feature_type, (list, tuple)):
-        feats = [extract_feature(waveform, feature_type=ft, sr=sr) for ft in feature_type]
+        # Always pass the original waveform (not a stacked array) for each feature extraction
+        if hasattr(waveform, 'ndim') and waveform.ndim > 1:
+            # If waveform is already stacked (modalities, ...), select the first channel for recursion
+            # (This should not happen in normal use, but is a defensive fix)
+            base_waveform = waveform[0] if waveform.shape[0] < 1000 else waveform
+        else:
+            base_waveform = waveform
+        feats = [extract_feature(base_waveform, feature_type=ft, sr=sr) for ft in feature_type]
         return np.stack(feats, axis=0)
 
     # If input is multi-channel (e.g., stereo), convert to mono for feature extraction
