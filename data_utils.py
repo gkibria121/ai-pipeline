@@ -670,47 +670,41 @@ class Dataset_ASVspoof2019_train(Dataset):
     def __getitem__(self, index):
         key = self.list_IDs[index]
         X, sr = sf.read(str(self.base_dir / f"flac/{key}.flac"))
-        
         # Apply random augmentation if enabled (only for training)
         if self.random_noise:
-            # Use composed augmentation for stronger regularization
-            # Apply 1-2 augmentations with 80% probability
             X = apply_composed_augmentation(X, sr=sr, num_augmentations=2, augment_prob=0.8)
-        
-        # Extract features
-        X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
-        
-        # Apply SpecAugment for spectrogram features during training with augmentation
-        if self.random_noise and self.feature_type > 0:
-            X_feat = apply_spectrogram_augmentation(
-                X_feat, 
-                freq_mask_prob=0.5, 
-                time_mask_prob=0.5,
-                max_freq_mask=20,
-                max_time_mask=50
-            )
-        
-        # Apply padding based on feature type
-        if self.feature_type == 0:
-            # For raw waveform, use the original padding
-            X_pad = pad_random(X_feat, self.cut)
-            x_inp = Tensor(X_pad)
-        else:
-            # For time-frequency features, pad time dimension
-            # Shape is (n_features, time_steps)
-            time_steps = X_feat.shape[1]
-            target_steps = int(self.cut / 160) + 1  # hop_length=160
-            
-            if time_steps >= target_steps:
-                stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
-                X_pad = X_feat[:, stt:stt + target_steps]
+        # Multimodal feature extraction
+        feature_types = self.feature_type if isinstance(self.feature_type, (list, tuple)) else [self.feature_type]
+        feats = []
+        for ft in feature_types:
+            feat = extract_feature(X, feature_type=ft, sr=sr)
+            # Apply SpecAugment for spectrogram features during training with augmentation
+            if self.random_noise and ft > 0:
+                feat = apply_spectrogram_augmentation(
+                    feat, 
+                    freq_mask_prob=0.5, 
+                    time_mask_prob=0.5,
+                    max_freq_mask=20,
+                    max_time_mask=50
+                )
+            # Padding
+            if ft == 0:
+                # For raw waveform, use the original padding
+                feat_pad = pad_random(feat, self.cut)
+                # For multimodal, expand dims to (1, len)
+                feat_pad = np.expand_dims(feat_pad, axis=0)
             else:
-                # Pad if too short
-                num_repeats = int(target_steps / time_steps) + 1
-                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
-            
-            x_inp = Tensor(X_pad)
-        
+                time_steps = feat.shape[1]
+                target_steps = int(self.cut / 160) + 1
+                if time_steps >= target_steps:
+                    stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
+                    feat_pad = feat[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / time_steps) + 1
+                    feat_pad = np.tile(feat, (1, num_repeats))[:, :target_steps]
+            feats.append(feat_pad)
+        # Stack along new channel/modalities dimension
+        x_inp = Tensor(np.stack(feats, axis=0)) if len(feats) > 1 else Tensor(feats[0])
         y = self.labels[key]
         return x_inp, y
 
@@ -732,29 +726,22 @@ class Dataset_ASVspoof2019_devNeval(Dataset):
     def __getitem__(self, index):
         key = self.list_IDs[index]
         X, sr = sf.read(str(self.base_dir / f"flac/{key}.flac"))
-        
-        # Extract features
-        X_feat = extract_feature(X, feature_type=self.feature_type, sr=sr)
-        
-        # Apply padding based on feature type
-        if self.feature_type == 0:
-            # For raw waveform, use the original padding
-            X_pad = pad(X_feat, self.cut)
-            x_inp = Tensor(X_pad)
-        else:
-            # For time-frequency features, pad time dimension
-            # Shape is (n_features, time_steps)
-            time_steps = X_feat.shape[1]
-            target_steps = int(self.cut / 160) + 1  # hop_length=160
-            
-            if time_steps >= target_steps:
-                stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
-                X_pad = X_feat[:, stt:stt + target_steps]
+        feature_types = self.feature_type if isinstance(self.feature_type, (list, tuple)) else [self.feature_type]
+        feats = []
+        for ft in feature_types:
+            feat = extract_feature(X, feature_type=ft, sr=sr)
+            if ft == 0:
+                feat_pad = pad(feat, self.cut)
+                feat_pad = np.expand_dims(feat_pad, axis=0)
             else:
-                # Pad if too short
-                num_repeats = int(target_steps / time_steps) + 1
-                X_pad = np.tile(X_feat, (1, num_repeats))[:, :target_steps]
-            
-            x_inp = Tensor(X_pad)
-        
+                time_steps = feat.shape[1]
+                target_steps = int(self.cut / 160) + 1
+                if time_steps >= target_steps:
+                    stt = np.random.randint(time_steps - target_steps) if time_steps > target_steps else 0
+                    feat_pad = feat[:, stt:stt + target_steps]
+                else:
+                    num_repeats = int(target_steps / time_steps) + 1
+                    feat_pad = np.tile(feat, (1, num_repeats))[:, :target_steps]
+            feats.append(feat_pad)
+        x_inp = Tensor(np.stack(feats, axis=0)) if len(feats) > 1 else Tensor(feats[0])
         return x_inp, key
